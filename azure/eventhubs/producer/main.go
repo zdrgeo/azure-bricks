@@ -37,9 +37,9 @@ func init() {
 }
 
 func main() {
-	notifyContext, stopNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
 
-	defer stopNotify()
+	defer cancelNotify()
 
 	// producerClient, err := azeventhubs.NewProducerClient(viper.GetString("AZURE_EVENTHUBS_NAMESPACE"), viper.GetString("AZURE_EVENTHUBS_EVENTHUB"), credential, nil)
 	producerClient, err := azeventhubs.NewProducerClientFromConnectionString(viper.GetString("AZURE_EVENTHUBS_CONNECTION_STRING"), viper.GetString("AZURE_EVENTHUBS_EVENTHUB"), nil)

@@ -45,9 +45,9 @@ func init() {
 }
 
 func main() {
-	notifyContext, stopNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
 
-	defer stopNotify()
+	defer cancelNotify()
 
 	receiver, err := client.NewReceiverForSubscription(viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), nil)
 	if err != nil {

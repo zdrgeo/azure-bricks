@@ -54,9 +54,9 @@ func init() {
 }
 
 func main() {
-	notifyContext, stopNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
 
-	defer stopNotify()
+	defer cancelNotify()
 
 	// consumerClient, err := azeventhubs.NewConsumerClient(viper.GetString("AZURE_EVENTHUBS_NAMESPACE"), viper.GetString("AZURE_EVENTHUBS_EVENTHUB"), azeventhubs.DefaultConsumerGroup /* viper.GetString("AZURE_EVENTHUBS_CONSUMERGROUP") */, credential, nil)
 	consumerClient, err := azeventhubs.NewConsumerClientFromConnectionString(viper.GetString("AZURE_EVENTHUBS_CONNECTION_STRING"), viper.GetString("AZURE_EVENTHUBS_EVENTHUB"), azeventhubs.DefaultConsumerGroup /* viper.GetString("AZURE_EVENTHUBS_CONSUMERGROUP") */, nil)
@@ -72,22 +72,18 @@ func main() {
 	}
 
 	go func() {
-		for {
-			processorPartitionClient := processor.NextPartitionClient(notifyContext)
-
-			if processorPartitionClient == nil {
-				break
-			}
-
+		for processorPartitionClient := processor.NextPartitionClient(notifyContext); processorPartitionClient != nil; processorPartitionClient = processor.NextPartitionClient(notifyContext) {
 			go func() {
 				defer processorPartitionClient.Close(notifyContext)
 
 				for {
-					waitContext, stopWait := context.WithTimeout(context.Background(), time.Minute)
+					events, err := func() ([]*azeventhubs.ReceivedEventData, error) {
+						context, cancel := context.WithTimeout(context.Background(), time.Minute)
 
-					events, err := processorPartitionClient.ReceiveEvents(waitContext, 100, nil)
+						defer cancel()
 
-					stopWait()
+						return processorPartitionClient.ReceiveEvents(context, 100, nil)
+					}()
 
 					if err != nil && !errors.Is(err, context.DeadlineExceeded) {
 						var eventHubsErr *azeventhubs.Error
@@ -99,8 +95,8 @@ func main() {
 						log.Fatal(err)
 					}
 
-					for _, event := range events {
-						handleEvent(event)
+					if err := handleEvents(events); err != nil {
+						log.Println(err)
 					}
 
 					if len(events) != 0 {
@@ -116,6 +112,16 @@ func main() {
 	if err := processor.Run(notifyContext); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func handleEvents(events []*azeventhubs.ReceivedEventData) error {
+	for _, event := range events {
+		if err := handleEvent(event); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func handleEvent(event *azeventhubs.ReceivedEventData) error {

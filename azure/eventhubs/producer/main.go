@@ -49,7 +49,7 @@ func main() {
 
 	defer producerClient.Close(notifyContext)
 
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(time.Minute)
 
 	done := make(chan struct{})
 

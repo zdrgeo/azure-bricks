@@ -45,7 +45,7 @@ func main() {
 
 	defer ingestion.Close()
 
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(time.Minute)
 
 	done := make(chan struct{})
 

@@ -56,7 +56,7 @@ func main() {
 
 	defer receiver.Close(notifyContext)
 
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(time.Minute)
 
 	done := make(chan struct{})
 

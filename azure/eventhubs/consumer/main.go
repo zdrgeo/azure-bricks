@@ -31,25 +31,25 @@ func init() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	var err error
 
 	credential, err = azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	// client, err = container.NewClient(viper.GetString("AZURE_STORAGE_CONTAINER"), credential, nil)
 	client, err = container.NewClientFromConnectionString(viper.GetString("AZURE_STORAGE_CONNECTION_STRING"), viper.GetString("AZURE_STORAGE_CONTAINER"), nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	checkpointStore, err = checkpoints.NewBlobStore(client, nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
@@ -61,14 +61,14 @@ func main() {
 	// consumerClient, err := azeventhubs.NewConsumerClient(viper.GetString("AZURE_EVENTHUBS_NAMESPACE"), viper.GetString("AZURE_EVENTHUBS_EVENTHUB"), azeventhubs.DefaultConsumerGroup /* viper.GetString("AZURE_EVENTHUBS_CONSUMERGROUP") */, credential, nil)
 	consumerClient, err := azeventhubs.NewConsumerClientFromConnectionString(viper.GetString("AZURE_EVENTHUBS_CONNECTION_STRING"), viper.GetString("AZURE_EVENTHUBS_EVENTHUB"), azeventhubs.DefaultConsumerGroup /* viper.GetString("AZURE_EVENTHUBS_CONSUMERGROUP") */, nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	defer consumerClient.Close(notifyContext)
 
 	processor, err := azeventhubs.NewProcessor(consumerClient, checkpointStore, nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	go func() {
@@ -92,7 +92,7 @@ func main() {
 							return
 						}
 
-						log.Fatal(err)
+						log.Panic(err)
 					}
 
 					if err := handleEvents(events); err != nil {
@@ -101,7 +101,7 @@ func main() {
 
 					if len(events) != 0 {
 						if err := processorPartitionClient.UpdateCheckpoint(notifyContext, events[len(events)-1], nil); err != nil {
-							log.Fatal(err)
+							log.Panic(err)
 						}
 					}
 				}
@@ -110,7 +110,7 @@ func main() {
 	}()
 
 	if err := processor.Run(notifyContext); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 

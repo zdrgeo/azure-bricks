@@ -26,21 +26,21 @@ func init() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	var err error
 
 	credential, err = azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	_ = credential
 	// client, err = azservicebus.NewClient(viper.GetString("AZURE_SERVICEBUS_NAMESPACE"), credential, nil)
 	client, err = azservicebus.NewClientFromConnectionString(viper.GetString("AZURE_SERVICEBUS_CONNECTION_STRING"), nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
@@ -51,7 +51,7 @@ func main() {
 
 	receiver, err := client.NewReceiverForSubscription(viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	defer receiver.Close(notifyContext)
@@ -70,18 +70,66 @@ func main() {
 			case <-ticker.C:
 				messages, err := receiver.ReceiveMessages(notifyContext, 1, nil)
 				if err != nil {
-					log.Fatal(err)
+					log.Panic(err)
 				}
 
 				for _, message := range messages {
 					if err := handleMessage(message); err != nil {
 						if err := receiver.AbandonMessage(notifyContext, message, nil); err != nil {
-							log.Fatal(err)
+							log.Panic(err)
 						}
 					}
 
 					if err := receiver.CompleteMessage(notifyContext, message, nil); err != nil {
-						log.Fatal(err)
+						log.Panic(err)
+					}
+				}
+			}
+		}
+	}()
+
+	<-done
+}
+
+func sessionMain() {
+	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+
+	defer cancelNotify()
+
+	sessionReceiver, err := client.AcceptSessionForSubscription(notifyContext, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), viper.GetString("AZURE_SERVICEBUS_SESSION"), nil)
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	defer sessionReceiver.Close(notifyContext)
+
+	ticker := time.NewTicker(time.Minute)
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		for {
+			select {
+			case <-notifyContext.Done():
+				break
+			case <-ticker.C:
+				messages, err := sessionReceiver.ReceiveMessages(notifyContext, 1, nil)
+				if err != nil {
+					log.Panic(err)
+				}
+
+				for _, message := range messages {
+					if err := handleMessage(message); err != nil {
+						if err := sessionReceiver.AbandonMessage(notifyContext, message, nil); err != nil {
+							log.Panic(err)
+						}
+					}
+
+					if err := sessionReceiver.CompleteMessage(notifyContext, message, nil); err != nil {
+						log.Panic(err)
 					}
 				}
 			}

@@ -26,21 +26,21 @@ func init() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	var err error
 
 	credential, err = azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	_ = credential
 	// client, err = azservicebus.NewClient(viper.GetString("AZURE_SERVICEBUS_NAMESPACE"), credential, nil)
 	client, err = azservicebus.NewClientFromConnectionString(viper.GetString("AZURE_SERVICEBUS_CONNECTION_STRING"), nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
@@ -51,7 +51,7 @@ func main() {
 
 	sender, err := client.NewSender(viper.GetString("AZURE_SERVICEBUS_TOPIC"), nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	defer sender.Close(notifyContext)
@@ -71,7 +71,7 @@ func main() {
 				message := createMessage()
 
 				if err := sender.SendMessage(notifyContext, message, nil); err != nil {
-					log.Fatal(err)
+					log.Panic(err)
 				}
 			}
 		}

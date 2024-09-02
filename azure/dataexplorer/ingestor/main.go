@@ -26,7 +26,7 @@ func init() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	// connectionStringBuilder = azkustodata.NewConnectionStringBuilder(viper.GetString("AZURE_DATAEXPLORER_CONNECTION_STRING")).WithDefaultAzureCredential()
@@ -40,7 +40,7 @@ func main() {
 
 	ingestion, err := azkustoingest.New(connectionStringBuilder, azkustoingest.WithDefaultDatabase("database"), azkustoingest.WithDefaultTable("table"))
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	defer ingestion.Close()
@@ -66,13 +66,13 @@ func main() {
 				result, err := ingestion.FromFile(notifyContext, fileName, azkustoingest.DeleteSource())
 
 				if err != nil {
-					log.Fatal(err)
+					log.Panic(err)
 				}
 
 				err = <-result.Wait(notifyContext)
 
 				if err != nil {
-					log.Fatal(err)
+					log.Panic(err)
 				}
 			}
 		}

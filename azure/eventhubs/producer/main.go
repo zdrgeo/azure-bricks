@@ -25,14 +25,14 @@ func init() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	var err error
 
 	credential, err = azidentity.NewDefaultAzureCredential(nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 }
 
@@ -44,7 +44,7 @@ func main() {
 	// producerClient, err := azeventhubs.NewProducerClient(viper.GetString("AZURE_EVENTHUBS_NAMESPACE"), viper.GetString("AZURE_EVENTHUBS_EVENTHUB"), credential, nil)
 	producerClient, err := azeventhubs.NewProducerClientFromConnectionString(viper.GetString("AZURE_EVENTHUBS_CONNECTION_STRING"), viper.GetString("AZURE_EVENTHUBS_EVENTHUB"), nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Panic(err)
 	}
 
 	defer producerClient.Close(notifyContext)
@@ -65,12 +65,12 @@ func main() {
 
 				eventBatch, err := producerClient.NewEventDataBatch(notifyContext, nil)
 				if err != nil {
-					log.Fatal(err)
+					log.Panic(err)
 				}
 
 				for _, event := range events {
 					if err := eventBatch.AddEventData(event, nil); err != nil {
-						log.Fatal(err)
+						log.Panic(err)
 					}
 				}
 

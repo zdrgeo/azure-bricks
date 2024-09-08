@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"os/signal"
@@ -58,6 +59,8 @@ func main() {
 
 	ticker := time.NewTicker(time.Minute)
 
+	defer ticker.Stop()
+
 	done := make(chan struct{})
 
 	go func() {
@@ -105,6 +108,8 @@ func sessionMain() {
 	defer sessionReceiver.Close(notifyContext)
 
 	ticker := time.NewTicker(time.Minute)
+
+	defer ticker.Stop()
 
 	done := make(chan struct{})
 

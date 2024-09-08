@@ -58,6 +58,8 @@ func main() {
 
 	ticker := time.NewTicker(time.Minute)
 
+	defer ticker.Stop()
+
 	done := make(chan struct{})
 
 	go func() {

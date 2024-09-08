@@ -1,4 +1,4 @@
-module github.com/zdrgeo/azure-bricks/azure-dataexplorer-ingestor
+module github.com/zdrgeo/azure-bricks/azure-dataexplorer-ingester
 
 go 1.23.0
 

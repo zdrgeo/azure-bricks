@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -81,4 +83,71 @@ func main() {
 	}()
 
 	<-done
+}
+
+func streamingOrManagedMain() {
+	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+
+	defer cancelNotify()
+
+	ingestion, err := azkustoingest.NewStreaming(connectionStringBuilder, azkustoingest.WithDefaultDatabase("database"), azkustoingest.WithDefaultTable("table"))
+	// ingestion, err := azkustoingest.NewManaged(connectionStringBuilder, azkustoingest.WithDefaultDatabase("database"), azkustoingest.WithDefaultTable("table"))
+	if err != nil {
+		log.Panic(err)
+	}
+
+	defer ingestion.Close()
+
+	ticker := time.NewTicker(time.Minute)
+
+	defer ticker.Stop()
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		for {
+			select {
+			case <-notifyContext.Done():
+				break
+			case <-ticker.C:
+				reader, writer := io.Pipe()
+
+				encoder := json.NewEncoder(writer)
+
+				go func() {
+					defer writer.Close()
+
+					entityes := createEntities()
+
+					for _, entity := range entityes {
+						if err := encoder.Encode(entity); err != nil {
+							log.Panic(err)
+						}
+					}
+				}()
+
+				result, err := ingestion.FromReader(notifyContext, reader)
+
+				if err != nil {
+					log.Panic(err)
+				}
+
+				err = <-result.Wait(notifyContext)
+
+				if err != nil {
+					log.Panic(err)
+				}
+			}
+		}
+	}()
+
+	<-done
+}
+
+func createEntities() []struct{} {
+	entities := []struct{}{}
+
+	return entities
 }

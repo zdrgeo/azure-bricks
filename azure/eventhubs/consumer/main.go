@@ -129,5 +129,6 @@ func handleEvent(event *azeventhubs.ReceivedEventData) error {
 }
 
 func handleEventBody(eventBody []byte) error {
+	_ = eventBody
 	return nil
 }

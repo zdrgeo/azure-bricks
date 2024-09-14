@@ -144,10 +144,84 @@ func sessionMain() {
 	<-done
 }
 
+func nextSessionMain() {
+	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+
+	defer cancelNotify()
+
+	ticker := time.NewTicker(time.Minute)
+
+	// done := make(chan struct{})
+	sessionQuota := make(chan struct{}, 10)
+
+	// go func() {
+	// 	defer close(done)
+
+	for {
+		sessionQuota <- struct{}{}
+
+		func() {
+			defer func() {
+				<-sessionQuota
+			}()
+
+			sessionReceiver, err := client.AcceptNextSessionForSubscription(notifyContext, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), nil)
+
+			if err != nil {
+				var serviceBusErr *azservicebus.Error
+
+				if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeTimeout {
+					return
+				}
+
+				log.Panic(err)
+			}
+
+			defer sessionReceiver.Close(notifyContext)
+
+			sessionDone := make(chan struct{})
+
+			go func() {
+				defer close(sessionDone)
+
+				for {
+					select {
+					case <-notifyContext.Done():
+						break
+					case <-ticker.C:
+						messages, err := sessionReceiver.ReceiveMessages(notifyContext, 1, nil)
+						if err != nil {
+							log.Panic(err)
+						}
+
+						for _, message := range messages {
+							if err := handleMessage(message); err != nil {
+								if err := sessionReceiver.AbandonMessage(notifyContext, message, nil); err != nil {
+									log.Panic(err)
+								}
+							}
+
+							if err := sessionReceiver.CompleteMessage(notifyContext, message, nil); err != nil {
+								log.Panic(err)
+							}
+						}
+					}
+				}
+			}()
+
+			<-sessionDone
+		}()
+	}
+	// }()
+
+	// <-done
+}
+
 func handleMessage(message *azservicebus.ReceivedMessage) error {
 	return handleMessageBody(message.Body)
 }
 
 func handleMessageBody(messageBody []byte) error {
+	_ = messageBody
 	return nil
 }

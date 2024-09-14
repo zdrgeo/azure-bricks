@@ -95,11 +95,11 @@ func main() {
 						log.Panic(err)
 					}
 
-					if err := handleEvents(events); err != nil {
-						log.Println(err)
-					}
-
 					if len(events) != 0 {
+						if err := handleEvents(events); err != nil {
+							log.Println(err)
+						}
+
 						if err := processorPartitionClient.UpdateCheckpoint(notifyContext, events[len(events)-1], nil); err != nil {
 							log.Panic(err)
 						}

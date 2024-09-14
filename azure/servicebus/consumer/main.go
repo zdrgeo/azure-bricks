@@ -27,6 +27,9 @@ func init() {
 	viper.SetEnvPrefix("demo")
 	viper.AutomaticEnv()
 
+	viper.SetDefault("AZURE_SERVICEBUS_SESSION_LIMIT", 10)
+	viper.SetDefault("AZURE_SERVICEBUS_MESSAGE_LIMIT", 1)
+
 	if err := viper.ReadInConfig(); err != nil {
 		log.Panic(err)
 	}
@@ -67,7 +70,7 @@ func main() {
 		case <-notifyContext.Done():
 			done = true
 		case <-ticker.C:
-			messages, err := receiver.ReceiveMessages(notifyContext, 1, nil)
+			messages, err := receiver.ReceiveMessages(notifyContext, viper.GetInt("AZURE_SERVICEBUS_MESSAGE_LIMIT"), nil)
 			if err != nil {
 				log.Panic(err)
 			}
@@ -119,7 +122,7 @@ func sessionMain() {
 				case <-notifyContext.Done():
 					done = true
 				case <-ticker.C:
-					messages, err := sessionReceiver.ReceiveMessages(notifyContext, 1, nil)
+					messages, err := sessionReceiver.ReceiveMessages(notifyContext, viper.GetInt("AZURE_SERVICEBUS_MESSAGE_LIMIT"), nil)
 					if err != nil {
 						log.Panic(err)
 					}
@@ -189,7 +192,7 @@ func nextSessionMain() {
 					case <-notifyContext.Done():
 						done = true
 					case <-ticker.C:
-						messages, err := sessionReceiver.ReceiveMessages(notifyContext, 1, nil)
+						messages, err := sessionReceiver.ReceiveMessages(notifyContext, viper.GetInt("AZURE_SERVICEBUS_MESSAGE_LIMIT"), nil)
 						if err != nil {
 							log.Panic(err)
 						}

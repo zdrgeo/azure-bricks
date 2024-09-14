@@ -51,38 +51,30 @@ func main() {
 
 	defer ticker.Stop()
 
-	done := make(chan struct{})
+	for done := false; !done; {
+		select {
+		case <-notifyContext.Done():
+			done = true
+		case <-ticker.C:
+			fileName := ""
 
-	go func() {
-		defer close(done)
+			if _, err := os.Stat(fileName); errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 
-		for {
-			select {
-			case <-notifyContext.Done():
-				break
-			case <-ticker.C:
-				fileName := ""
+			result, err := ingestion.FromFile(notifyContext, fileName, azkustoingest.DeleteSource())
 
-				if _, err := os.Stat(fileName); errors.Is(err, os.ErrNotExist) {
-					continue
-				}
+			if err != nil {
+				log.Panic(err)
+			}
 
-				result, err := ingestion.FromFile(notifyContext, fileName, azkustoingest.DeleteSource())
+			err = <-result.Wait(notifyContext)
 
-				if err != nil {
-					log.Panic(err)
-				}
-
-				err = <-result.Wait(notifyContext)
-
-				if err != nil {
-					log.Panic(err)
-				}
+			if err != nil {
+				log.Panic(err)
 			}
 		}
-	}()
-
-	<-done
+	}
 }
 
 func streamingOrManagedMain() {
@@ -102,52 +94,44 @@ func streamingOrManagedMain() {
 
 	defer ticker.Stop()
 
-	done := make(chan struct{})
+	for done := false; !done; {
+		select {
+		case <-notifyContext.Done():
+			done = true
+		case <-ticker.C:
+			reader, writer := io.Pipe()
 
-	go func() {
-		defer close(done)
+			encoder := json.NewEncoder(writer)
 
-		for {
-			select {
-			case <-notifyContext.Done():
-				break
-			case <-ticker.C:
-				reader, writer := io.Pipe()
+			go func() {
+				defer writer.Close()
 
-				encoder := json.NewEncoder(writer)
+				records := createRecords()
 
-				go func() {
-					defer writer.Close()
-
-					entityes := createEntities()
-
-					for _, entity := range entityes {
-						if err := encoder.Encode(entity); err != nil {
-							log.Panic(err)
-						}
+				for _, record := range records {
+					if err := encoder.Encode(record); err != nil {
+						log.Panic(err)
 					}
-				}()
-
-				result, err := ingestion.FromReader(notifyContext, reader)
-
-				if err != nil {
-					log.Panic(err)
 				}
+			}()
 
-				err = <-result.Wait(notifyContext)
+			result, err := ingestion.FromReader(notifyContext, reader)
 
-				if err != nil {
-					log.Panic(err)
-				}
+			if err != nil {
+				log.Panic(err)
+			}
+
+			err = <-result.Wait(notifyContext)
+
+			if err != nil {
+				log.Panic(err)
 			}
 		}
-	}()
-
-	<-done
+	}
 }
 
-func createEntities() []struct{} {
-	entities := []struct{}{}
+func createRecords() []struct{} {
+	records := []struct{}{}
 
-	return entities
+	return records
 }

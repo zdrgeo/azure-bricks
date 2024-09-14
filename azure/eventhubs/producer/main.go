@@ -53,35 +53,27 @@ func main() {
 
 	defer ticker.Stop()
 
-	done := make(chan struct{})
+	for done := false; !done; {
+		select {
+		case <-notifyContext.Done():
+			done = true
+		case <-ticker.C:
+			events := createEvents()
 
-	go func() {
-		defer close(done)
+			eventBatch, err := producerClient.NewEventDataBatch(notifyContext, nil)
+			if err != nil {
+				log.Panic(err)
+			}
 
-		for {
-			select {
-			case <-notifyContext.Done():
-				break
-			case <-ticker.C:
-				events := createEvents()
-
-				eventBatch, err := producerClient.NewEventDataBatch(notifyContext, nil)
-				if err != nil {
+			for _, event := range events {
+				if err := eventBatch.AddEventData(event, nil); err != nil {
 					log.Panic(err)
 				}
-
-				for _, event := range events {
-					if err := eventBatch.AddEventData(event, nil); err != nil {
-						log.Panic(err)
-					}
-				}
-
-				producerClient.SendEventDataBatch(notifyContext, eventBatch, nil)
 			}
-		}
-	}()
 
-	<-done
+			producerClient.SendEventDataBatch(notifyContext, eventBatch, nil)
+		}
+	}
 }
 
 func createEvents() []*azeventhubs.EventData {

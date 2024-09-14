@@ -60,26 +60,18 @@ func main() {
 
 	defer ticker.Stop()
 
-	done := make(chan struct{})
+	for done := false; !done; {
+		select {
+		case <-notifyContext.Done():
+			done = true
+		case <-ticker.C:
+			message := createMessage()
 
-	go func() {
-		defer close(done)
-
-		for {
-			select {
-			case <-notifyContext.Done():
-				break
-			case <-ticker.C:
-				message := createMessage()
-
-				if err := sender.SendMessage(notifyContext, message, nil); err != nil {
-					log.Panic(err)
-				}
+			if err := sender.SendMessage(notifyContext, message, nil); err != nil {
+				log.Panic(err)
 			}
 		}
-	}()
-
-	<-done
+	}
 }
 
 func createMessage() *azservicebus.Message {

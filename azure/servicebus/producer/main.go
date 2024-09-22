@@ -32,6 +32,7 @@ func init() {
 	var err error
 
 	credential, err = azidentity.NewDefaultAzureCredential(nil)
+
 	if err != nil {
 		log.Panic(err)
 	}
@@ -39,33 +40,35 @@ func init() {
 	_ = credential
 	// client, err = azservicebus.NewClient(viper.GetString("AZURE_SERVICEBUS_NAMESPACE"), credential, nil)
 	client, err = azservicebus.NewClientFromConnectionString(viper.GetString("AZURE_SERVICEBUS_CONNECTION_STRING"), nil)
+
 	if err != nil {
 		log.Panic(err)
 	}
 }
 
 func main() {
-	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancelCtx := signal.NotifyContext(context.Background(), os.Interrupt)
 
-	defer cancelNotify()
+	defer cancelCtx()
 
 	sender, err := client.NewSender(viper.GetString("AZURE_SERVICEBUS_TOPIC"), nil)
+
 	if err != nil {
 		log.Panic(err)
 	}
 
-	defer sender.Close(notifyContext)
+	defer sender.Close(ctx)
 
 	tick := time.Tick(1 * time.Minute)
 
 	for done := false; !done; {
 		select {
-		case <-notifyContext.Done():
+		case <-ctx.Done():
 			done = true
 		case <-tick:
 			message := createMessage()
 
-			if err := sender.SendMessage(notifyContext, message, nil); err != nil {
+			if err := sender.SendMessage(ctx, message, nil); err != nil {
 				log.Panic(err)
 			}
 		}

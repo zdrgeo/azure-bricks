@@ -36,11 +36,12 @@ func init() {
 }
 
 func main() {
-	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancelCtx := signal.NotifyContext(context.Background(), os.Interrupt)
 
-	defer cancelNotify()
+	defer cancelCtx()
 
 	ingestion, err := azkustoingest.New(connectionStringBuilder, azkustoingest.WithDefaultDatabase("database"), azkustoingest.WithDefaultTable("table"))
+
 	if err != nil {
 		log.Panic(err)
 	}
@@ -51,7 +52,7 @@ func main() {
 
 	for done := false; !done; {
 		select {
-		case <-notifyContext.Done():
+		case <-ctx.Done():
 			done = true
 		case <-tick:
 			fileName := ""
@@ -60,13 +61,13 @@ func main() {
 				continue
 			}
 
-			result, err := ingestion.FromFile(notifyContext, fileName, azkustoingest.DeleteSource())
+			result, err := ingestion.FromFile(ctx, fileName, azkustoingest.DeleteSource())
 
 			if err != nil {
 				log.Panic(err)
 			}
 
-			err = <-result.Wait(notifyContext)
+			err = <-result.Wait(ctx)
 
 			if err != nil {
 				log.Panic(err)
@@ -76,12 +77,13 @@ func main() {
 }
 
 func streamingOrManagedMain() {
-	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancelCtx := signal.NotifyContext(context.Background(), os.Interrupt)
 
-	defer cancelNotify()
+	defer cancelCtx()
 
 	ingestion, err := azkustoingest.NewStreaming(connectionStringBuilder, azkustoingest.WithDefaultDatabase("database"), azkustoingest.WithDefaultTable("table"))
 	// ingestion, err := azkustoingest.NewManaged(connectionStringBuilder, azkustoingest.WithDefaultDatabase("database"), azkustoingest.WithDefaultTable("table"))
+
 	if err != nil {
 		log.Panic(err)
 	}
@@ -92,7 +94,7 @@ func streamingOrManagedMain() {
 
 	for done := false; !done; {
 		select {
-		case <-notifyContext.Done():
+		case <-ctx.Done():
 			done = true
 		case <-tick:
 			reader, writer := io.Pipe()
@@ -111,13 +113,13 @@ func streamingOrManagedMain() {
 				}
 			}()
 
-			result, err := ingestion.FromReader(notifyContext, reader)
+			result, err := ingestion.FromReader(ctx, reader)
 
 			if err != nil {
 				log.Panic(err)
 			}
 
-			err = <-result.Wait(notifyContext)
+			err = <-result.Wait(ctx)
 
 			if err != nil {
 				log.Panic(err)

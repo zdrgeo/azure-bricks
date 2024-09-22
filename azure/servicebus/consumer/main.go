@@ -37,6 +37,7 @@ func init() {
 	var err error
 
 	credential, err = azidentity.NewDefaultAzureCredential(nil)
+
 	if err != nil {
 		log.Panic(err)
 	}
@@ -44,43 +45,45 @@ func init() {
 	_ = credential
 	// client, err = azservicebus.NewClient(viper.GetString("AZURE_SERVICEBUS_NAMESPACE"), credential, nil)
 	client, err = azservicebus.NewClientFromConnectionString(viper.GetString("AZURE_SERVICEBUS_CONNECTION_STRING"), nil)
+
 	if err != nil {
 		log.Panic(err)
 	}
 }
 
 func main() {
-	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancelCtx := signal.NotifyContext(context.Background(), os.Interrupt)
 
-	defer cancelNotify()
+	defer cancelCtx()
 
 	receiver, err := client.NewReceiverForSubscription(viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), nil)
+
 	if err != nil {
 		log.Panic(err)
 	}
 
-	defer receiver.Close(notifyContext)
+	defer receiver.Close(ctx)
 
 	tick := time.Tick(1 * time.Minute)
 
 	for done := false; !done; {
 		select {
-		case <-notifyContext.Done():
+		case <-ctx.Done():
 			done = true
 		case <-tick:
-			messages, err := receiver.ReceiveMessages(notifyContext, viper.GetInt("AZURE_SERVICEBUS_MESSAGE_LIMIT"), nil)
+			messages, err := receiver.ReceiveMessages(ctx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
 			if err != nil {
 				log.Panic(err)
 			}
 
 			for _, message := range messages {
 				if err := handleMessage(message); err != nil {
-					if err := receiver.AbandonMessage(notifyContext, message, nil); err != nil {
+					if err := receiver.AbandonMessage(ctx, message, nil); err != nil {
 						log.Panic(err)
 					}
 				}
 
-				if err := receiver.CompleteMessage(notifyContext, message, nil); err != nil {
+				if err := receiver.CompleteMessage(ctx, message, nil); err != nil {
 					log.Panic(err)
 				}
 			}
@@ -89,48 +92,48 @@ func main() {
 }
 
 func sessionMain() {
-	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancelCtx := signal.NotifyContext(context.Background(), os.Interrupt)
 
-	defer cancelNotify()
+	defer cancelCtx()
 
 	sessions := viper.GetStringSlice("AZURE_SERVICEBUS_SESSION")
 
-	wg := sync.WaitGroup{}
+	sessionsGroup := sync.WaitGroup{}
 
 	for _, session := range sessions {
-		wg.Add(1)
+		sessionsGroup.Add(1)
 
 		go func() {
-			defer wg.Done()
+			defer sessionsGroup.Done()
 
-			sessionReceiver, err := client.AcceptSessionForSubscription(notifyContext, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), session, nil)
+			sessionReceiver, err := client.AcceptSessionForSubscription(ctx, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), session, nil)
 
 			if err != nil {
 				log.Panic(err)
 			}
 
-			defer sessionReceiver.Close(notifyContext)
+			defer sessionReceiver.Close(ctx)
 
 			tick := time.Tick(1 * time.Minute)
 
 			for done := false; !done; {
 				select {
-				case <-notifyContext.Done():
+				case <-ctx.Done():
 					done = true
 				case <-tick:
-					messages, err := sessionReceiver.ReceiveMessages(notifyContext, viper.GetInt("AZURE_SERVICEBUS_MESSAGE_LIMIT"), nil)
+					messages, err := sessionReceiver.ReceiveMessages(ctx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
 					if err != nil {
 						log.Panic(err)
 					}
 
 					for _, message := range messages {
 						if err := handleMessage(message); err != nil {
-							if err := sessionReceiver.AbandonMessage(notifyContext, message, nil); err != nil {
+							if err := sessionReceiver.AbandonMessage(ctx, message, nil); err != nil {
 								log.Panic(err)
 							}
 						}
 
-						if err := sessionReceiver.CompleteMessage(notifyContext, message, nil); err != nil {
+						if err := sessionReceiver.CompleteMessage(ctx, message, nil); err != nil {
 							log.Panic(err)
 						}
 					}
@@ -139,33 +142,33 @@ func sessionMain() {
 		}()
 	}
 
-	wg.Wait()
+	sessionsGroup.Wait()
 }
 
 func nextSessionMain() {
-	notifyContext, cancelNotify := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, cancelCtx := signal.NotifyContext(context.Background(), os.Interrupt)
 
-	defer cancelNotify()
+	defer cancelCtx()
 
-	wg := sync.WaitGroup{}
+	sessionsGroup := sync.WaitGroup{}
 
-	sessionLimit := make(chan struct{}, viper.GetInt("AZURE_SERVICEBUS_SESSION_LIMIT"))
+	sessionsLimit := make(chan struct{}, viper.GetInt("AZURE_SERVICEBUS_SESSIONS_LIMIT"))
 
 	for sessionDone := false; !sessionDone; {
 		select {
-		case <-notifyContext.Done():
+		case <-ctx.Done():
 			sessionDone = true
-		case sessionLimit <- struct{}{}:
-			wg.Add(1)
+		case sessionsLimit <- struct{}{}:
+			sessionsGroup.Add(1)
 
 			go func() {
 				defer func() {
-					wg.Done()
+					sessionsGroup.Done()
 
-					<-sessionLimit
+					<-sessionsLimit
 				}()
 
-				sessionReceiver, err := client.AcceptNextSessionForSubscription(notifyContext, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), nil)
+				sessionReceiver, err := client.AcceptNextSessionForSubscription(ctx, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), nil)
 
 				if err != nil {
 					var serviceBusErr *azservicebus.Error
@@ -177,28 +180,28 @@ func nextSessionMain() {
 					log.Panic(err)
 				}
 
-				defer sessionReceiver.Close(notifyContext)
+				defer sessionReceiver.Close(ctx)
 
 				tick := time.Tick(1 * time.Minute)
 
 				for done := false; !done; {
 					select {
-					case <-notifyContext.Done():
+					case <-ctx.Done():
 						done = true
 					case <-tick:
-						messages, err := sessionReceiver.ReceiveMessages(notifyContext, viper.GetInt("AZURE_SERVICEBUS_MESSAGE_LIMIT"), nil)
+						messages, err := sessionReceiver.ReceiveMessages(ctx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
 						if err != nil {
 							log.Panic(err)
 						}
 
 						for _, message := range messages {
 							if err := handleMessage(message); err != nil {
-								if err := sessionReceiver.AbandonMessage(notifyContext, message, nil); err != nil {
+								if err := sessionReceiver.AbandonMessage(ctx, message, nil); err != nil {
 									log.Panic(err)
 								}
 							}
 
-							if err := sessionReceiver.CompleteMessage(notifyContext, message, nil); err != nil {
+							if err := sessionReceiver.CompleteMessage(ctx, message, nil); err != nil {
 								log.Panic(err)
 							}
 						}
@@ -208,7 +211,7 @@ func nextSessionMain() {
 		}
 	}
 
-	wg.Wait()
+	sessionsGroup.Wait()
 }
 
 func handleMessage(message *azservicebus.ReceivedMessage) error {

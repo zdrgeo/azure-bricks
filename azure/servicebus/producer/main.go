@@ -56,15 +56,13 @@ func main() {
 
 	defer sender.Close(notifyContext)
 
-	ticker := time.NewTicker(time.Minute)
-
-	defer ticker.Stop()
+	tick := time.Tick(1 * time.Minute)
 
 	for done := false; !done; {
 		select {
 		case <-notifyContext.Done():
 			done = true
-		case <-ticker.C:
+		case <-tick:
 			message := createMessage()
 
 			if err := sender.SendMessage(notifyContext, message, nil); err != nil {

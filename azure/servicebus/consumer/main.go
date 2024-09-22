@@ -61,15 +61,13 @@ func main() {
 
 	defer receiver.Close(notifyContext)
 
-	ticker := time.NewTicker(time.Minute)
-
-	defer ticker.Stop()
+	tick := time.Tick(1 * time.Minute)
 
 	for done := false; !done; {
 		select {
 		case <-notifyContext.Done():
 			done = true
-		case <-ticker.C:
+		case <-tick:
 			messages, err := receiver.ReceiveMessages(notifyContext, viper.GetInt("AZURE_SERVICEBUS_MESSAGE_LIMIT"), nil)
 			if err != nil {
 				log.Panic(err)
@@ -113,15 +111,13 @@ func sessionMain() {
 
 			defer sessionReceiver.Close(notifyContext)
 
-			ticker := time.NewTicker(time.Minute)
-
-			defer ticker.Stop()
+			tick := time.Tick(1 * time.Minute)
 
 			for done := false; !done; {
 				select {
 				case <-notifyContext.Done():
 					done = true
-				case <-ticker.C:
+				case <-tick:
 					messages, err := sessionReceiver.ReceiveMessages(notifyContext, viper.GetInt("AZURE_SERVICEBUS_MESSAGE_LIMIT"), nil)
 					if err != nil {
 						log.Panic(err)
@@ -183,15 +179,13 @@ func nextSessionMain() {
 
 				defer sessionReceiver.Close(notifyContext)
 
-				ticker := time.NewTicker(time.Minute)
-
-				defer ticker.Stop()
+				tick := time.Tick(1 * time.Minute)
 
 				for done := false; !done; {
 					select {
 					case <-notifyContext.Done():
 						done = true
-					case <-ticker.C:
+					case <-tick:
 						messages, err := sessionReceiver.ReceiveMessages(notifyContext, viper.GetInt("AZURE_SERVICEBUS_MESSAGE_LIMIT"), nil)
 						if err != nil {
 							log.Panic(err)

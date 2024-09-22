@@ -47,15 +47,13 @@ func main() {
 
 	defer ingestion.Close()
 
-	ticker := time.NewTicker(time.Minute)
-
-	defer ticker.Stop()
+	tick := time.Tick(1 * time.Minute)
 
 	for done := false; !done; {
 		select {
 		case <-notifyContext.Done():
 			done = true
-		case <-ticker.C:
+		case <-tick:
 			fileName := ""
 
 			if _, err := os.Stat(fileName); errors.Is(err, os.ErrNotExist) {
@@ -90,15 +88,13 @@ func streamingOrManagedMain() {
 
 	defer ingestion.Close()
 
-	ticker := time.NewTicker(time.Minute)
-
-	defer ticker.Stop()
+	tick := time.Tick(1 * time.Minute)
 
 	for done := false; !done; {
 		select {
 		case <-notifyContext.Done():
 			done = true
-		case <-ticker.C:
+		case <-tick:
 			reader, writer := io.Pipe()
 
 			encoder := json.NewEncoder(writer)

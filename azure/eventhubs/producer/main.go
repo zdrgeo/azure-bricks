@@ -49,16 +49,14 @@ func main() {
 
 	defer producerClient.Close(notifyContext)
 
-	ticker := time.NewTicker(time.Minute)
-
-	defer ticker.Stop()
+	tick := time.Tick(1 * time.Minute)
 
 	for done := false; !done; {
 		select {
 		case <-notifyContext.Done():
 			done = true
-		case <-ticker.C:
-			events := createEvents()
+		case <-tick:
+			events := []*azeventhubs.EventData{}
 
 			eventBatch, err := producerClient.NewEventDataBatch(notifyContext, nil)
 			if err != nil {

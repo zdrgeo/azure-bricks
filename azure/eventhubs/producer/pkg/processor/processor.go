@@ -7,8 +7,8 @@ import (
 	"sync"
 )
 
-type ProducerFunc[Item any] func(data any) (item Item, foldData any, err error)
-type ConsumerFunc[Item any] func(item Item, data any) (foldData any, err error)
+type ProducerFunc[Item any] func(ctx context.Context, data any) (item Item, foldData any, err error)
+type ConsumerFunc[Item any] func(ctx context.Context, item Item, data any) (foldData any, err error)
 
 var ErrProducerComplete = errors.New("producer complete")
 
@@ -48,14 +48,12 @@ type consumer[Item any] struct {
 type processor[Item any] struct {
 	producers []*producer[Item]
 	consumers []*consumer[Item]
-	// quit   chan chan error
 }
 
 func NewProcessor[Item any]() *processor[Item] {
 	return &processor[Item]{
 		producers: []*producer[Item]{},
 		consumers: []*consumer[Item]{},
-		// quit:   make(chan chan error),
 	}
 }
 
@@ -77,7 +75,7 @@ func (processor *processor[Item]) AddConsumer(consumerFunc ConsumerFunc[Item], c
 	processor.consumers = append(processor.consumers, consumer)
 }
 
-func (processor *processor[Item]) Run(c context.Context, size int) error {
+func (processor *processor[Item]) Run(ctx context.Context, size int, consumersComplete bool) error {
 	items := make(chan Item, size)
 
 	producersGroup := sync.WaitGroup{}
@@ -89,8 +87,16 @@ func (processor *processor[Item]) Run(c context.Context, size int) error {
 		go func() {
 			defer producersGroup.Done()
 
-			producer.Err = Produce(c, items, producer.Func, producer.Data)
+			producer.Err = Produce(ctx, items, producer.Func, producer.Data)
 		}()
+	}
+
+	var consumeCtx context.Context
+
+	if consumersComplete {
+		consumeCtx = context.Background()
+	} else {
+		consumeCtx = ctx
 	}
 
 	consumersGroup.Add(len(processor.consumers))
@@ -99,7 +105,7 @@ func (processor *processor[Item]) Run(c context.Context, size int) error {
 		go func() {
 			defer consumersGroup.Done()
 
-			consumer.Err = Consume(context.Background(), items, consumer.Func, consumer.Data)
+			consumer.Err = Consume(consumeCtx, items, consumer.Func, consumer.Data)
 		}()
 	}
 
@@ -139,21 +145,11 @@ func (processor *processor[Item]) runErr() error {
 	return nil
 }
 
-/*
-	func (processor *processor[Item]) quit() error {
-		err := make(chan error)
-
-		processor.quit <- err
-
-		return <-err
-	}
-*/
-
-func Produce[Item any](c context.Context, items chan<- Item, producerFunc ProducerFunc[Item], producerData any) error {
+func Produce[Item any](ctx context.Context, items chan<- Item, producerFunc ProducerFunc[Item], producerData any) error {
 	data := producerData
 
 	for {
-		item, foldData, err := producerFunc(data)
+		item, foldData, err := producerFunc(ctx, data)
 
 		if err != nil {
 			if errors.Is(err, ErrProducerComplete) {
@@ -166,31 +162,26 @@ func Produce[Item any](c context.Context, items chan<- Item, producerFunc Produc
 		data = foldData
 
 		select {
-		// case err := <-quit:
-		// //	close(items)
-		// 	err <- errors.New("error")
-		// 	close(err)
-		// 	return
-		case <-c.Done():
-			return c.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		case items <- item:
 		}
 	}
 }
 
-func Consume[Item any](c context.Context, items <-chan Item, consumerFunc ConsumerFunc[Item], consumerData any) error {
+func Consume[Item any](ctx context.Context, items <-chan Item, consumerFunc ConsumerFunc[Item], consumerData any) error {
 	data := consumerData
 
 	for {
 		select {
-		case <-c.Done():
-			return c.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		case item, ok := <-items:
 			if !ok {
 				return nil
 			}
 
-			foldData, err := consumerFunc(item, data)
+			foldData, err := consumerFunc(ctx, item, data)
 
 			if err != nil {
 				return err

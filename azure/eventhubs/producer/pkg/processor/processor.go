@@ -45,19 +45,19 @@ type consumer[Item any] struct {
 	Err  error
 }
 
-type processor[Item any] struct {
+type Processor[Item any] struct {
 	producers []*producer[Item]
 	consumers []*consumer[Item]
 }
 
-func NewProcessor[Item any]() *processor[Item] {
-	return &processor[Item]{
+func NewProcessor[Item any]() *Processor[Item] {
+	return &Processor[Item]{
 		producers: []*producer[Item]{},
 		consumers: []*consumer[Item]{},
 	}
 }
 
-func (processor *processor[Item]) AddProducer(producerFunc ProducerFunc[Item], producerData any) {
+func (processor *Processor[Item]) AddProducer(producerFunc ProducerFunc[Item], producerData any) {
 	producer := &producer[Item]{
 		Func: producerFunc,
 		Data: producerData,
@@ -66,7 +66,7 @@ func (processor *processor[Item]) AddProducer(producerFunc ProducerFunc[Item], p
 	processor.producers = append(processor.producers, producer)
 }
 
-func (processor *processor[Item]) AddConsumer(consumerFunc ConsumerFunc[Item], consumerData any) {
+func (processor *Processor[Item]) AddConsumer(consumerFunc ConsumerFunc[Item], consumerData any) {
 	consumer := &consumer[Item]{
 		Func: consumerFunc,
 		Data: consumerData,
@@ -75,7 +75,7 @@ func (processor *processor[Item]) AddConsumer(consumerFunc ConsumerFunc[Item], c
 	processor.consumers = append(processor.consumers, consumer)
 }
 
-func (processor *processor[Item]) Run(ctx context.Context, size int, consumersComplete bool) error {
+func (processor *Processor[Item]) Run(ctx context.Context, size int, consumersComplete bool) error {
 	items := make(chan Item, size)
 
 	producersGroup := sync.WaitGroup{}
@@ -118,7 +118,7 @@ func (processor *processor[Item]) Run(ctx context.Context, size int, consumersCo
 	return processor.runErr()
 }
 
-func (processor *processor[Item]) runErr() error {
+func (processor *Processor[Item]) runErr() error {
 	var producerErrs []error
 
 	for _, producer := range processor.producers {

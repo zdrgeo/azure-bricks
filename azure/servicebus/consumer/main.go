@@ -96,7 +96,7 @@ func sessionMain() {
 
 	defer cancelCtx()
 
-	sessions := viper.GetStringSlice("AZURE_SERVICEBUS_SESSION")
+	sessions := viper.GetStringSlice("AZURE_SERVICEBUS_SESSIONS")
 
 	sessionsGroup := sync.WaitGroup{}
 

@@ -105,12 +105,8 @@ type EventBatch struct {
 	Events []*Event
 }
 
-const eventBatchLimit = 10
-
 func newEventBatchProducer(scanner *bufio.Scanner) processor.ProducerFunc[*EventBatch] {
 	return func(ctx context.Context, data any) (item *EventBatch, foldData any, err error) {
-		events := make([]*Event, 0, eventBatchLimit)
-
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
@@ -123,23 +119,23 @@ func newEventBatchProducer(scanner *bufio.Scanner) processor.ProducerFunc[*Event
 			}
 		}
 
+		eventsLimit := viper.GetInt("AZURE_EVENTHUBS_EVENTBATCH_EVENTS_LIMIT")
+
+		events := make([]*Event, 0, eventsLimit)
+
 		event := &Event{
 			Bytes: scanner.Bytes(),
 		}
 
 		events = append(events, event)
 
-		for len(events) < eventBatchLimit {
+		for len(events) < eventsLimit {
 			if err := ctx.Err(); err != nil {
 				break
 			}
 
 			if !scanner.Scan() {
-				if err := scanner.Err(); err != nil {
-					break
-				} else {
-					break
-				}
+				break
 			}
 
 			event := &Event{

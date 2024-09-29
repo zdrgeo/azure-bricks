@@ -7,8 +7,8 @@ import (
 	"sync"
 )
 
-type ProducerFunc[Item any] func(ctx context.Context, data any) (item Item, foldData any, err error)
-type ConsumerFunc[Item any] func(ctx context.Context, item Item, data any) (foldData any, err error)
+type ProducerFunc[Item any, Data any] func(ctx context.Context, data Data) (item Item, foldData Data, err error)
+type ConsumerFunc[Item any, Data any] func(ctx context.Context, item Item, data Data) (foldData Data, err error)
 
 var ErrProducerComplete = errors.New("producer complete")
 
@@ -33,32 +33,32 @@ func (runErr *RunError) Error() string {
 	return errMsg
 }
 
-type producer[Item any] struct {
-	Func ProducerFunc[Item]
-	Data any
+type producer[Item any, Data any] struct {
+	Func ProducerFunc[Item, Data]
+	Data Data
 	Err  error
 }
 
-type consumer[Item any] struct {
-	Func ConsumerFunc[Item]
-	Data any
+type consumer[Item any, Data any] struct {
+	Func ConsumerFunc[Item, Data]
+	Data Data
 	Err  error
 }
 
-type Processor[Item any] struct {
-	producers []*producer[Item]
-	consumers []*consumer[Item]
+type Processor[Item any, ProducerData any, ConsumerData any] struct {
+	producers []*producer[Item, ProducerData]
+	consumers []*consumer[Item, ConsumerData]
 }
 
-func NewProcessor[Item any]() *Processor[Item] {
-	return &Processor[Item]{
-		producers: []*producer[Item]{},
-		consumers: []*consumer[Item]{},
+func NewProcessor[Item any, ProducerData any, ConsumerData any]() *Processor[Item, ProducerData, ConsumerData] {
+	return &Processor[Item, ProducerData, ConsumerData]{
+		producers: []*producer[Item, ProducerData]{},
+		consumers: []*consumer[Item, ConsumerData]{},
 	}
 }
 
-func (processor *Processor[Item]) AddProducer(producerFunc ProducerFunc[Item], producerData any) {
-	producer := &producer[Item]{
+func (processor *Processor[Item, ProducerData, ConsumerData]) AddProducer(producerFunc ProducerFunc[Item, ProducerData], producerData ProducerData) {
+	producer := &producer[Item, ProducerData]{
 		Func: producerFunc,
 		Data: producerData,
 	}
@@ -66,8 +66,8 @@ func (processor *Processor[Item]) AddProducer(producerFunc ProducerFunc[Item], p
 	processor.producers = append(processor.producers, producer)
 }
 
-func (processor *Processor[Item]) AddConsumer(consumerFunc ConsumerFunc[Item], consumerData any) {
-	consumer := &consumer[Item]{
+func (processor *Processor[Item, ProducerData, ConsumerData]) AddConsumer(consumerFunc ConsumerFunc[Item, ConsumerData], consumerData ConsumerData) {
+	consumer := &consumer[Item, ConsumerData]{
 		Func: consumerFunc,
 		Data: consumerData,
 	}
@@ -75,7 +75,7 @@ func (processor *Processor[Item]) AddConsumer(consumerFunc ConsumerFunc[Item], c
 	processor.consumers = append(processor.consumers, consumer)
 }
 
-func (processor *Processor[Item]) Run(ctx context.Context, size int, consumersComplete bool) error {
+func (processor *Processor[Item, ProducerData, ConsumerData]) Run(ctx context.Context, size int, consumersComplete bool) error {
 	items := make(chan Item, size)
 
 	producersGroup := sync.WaitGroup{}
@@ -118,7 +118,7 @@ func (processor *Processor[Item]) Run(ctx context.Context, size int, consumersCo
 	return processor.runErr()
 }
 
-func (processor *Processor[Item]) runErr() error {
+func (processor *Processor[Item, ProducerData, ConsumerData]) runErr() error {
 	var producerErrs []error
 
 	for _, producer := range processor.producers {
@@ -145,7 +145,7 @@ func (processor *Processor[Item]) runErr() error {
 	return nil
 }
 
-func Produce[Item any](ctx context.Context, items chan<- Item, producerFunc ProducerFunc[Item], producerData any) error {
+func Produce[Item any, ProducerData any](ctx context.Context, items chan<- Item, producerFunc ProducerFunc[Item, ProducerData], producerData ProducerData) error {
 	data := producerData
 
 	for {
@@ -169,7 +169,7 @@ func Produce[Item any](ctx context.Context, items chan<- Item, producerFunc Prod
 	}
 }
 
-func Consume[Item any](ctx context.Context, items <-chan Item, consumerFunc ConsumerFunc[Item], consumerData any) error {
+func Consume[Item any, ConsumerData any](ctx context.Context, items <-chan Item, consumerFunc ConsumerFunc[Item, ConsumerData], consumerData ConsumerData) error {
 	data := consumerData
 
 	for {

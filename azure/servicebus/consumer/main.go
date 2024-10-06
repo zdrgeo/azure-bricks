@@ -346,7 +346,7 @@ func Run2[Item any](ctx context.Context, size int, consumersRunToCompletion bool
 	consumersGroup.Wait()
 }
 
-func Run3[Item any](ctx context.Context, size int, consumersRunToCompletion bool, producerFuncs []processor.ProducerFunc[*Session, any], consumerFuncs []processor.ConsumerFunc[*Session, any]) {
+func Run3[Item any](ctx context.Context, size int, producerFuncs []processor.ProducerFunc[*Session, any], consumerFuncs []processor.ConsumerFunc[*Session, any]) {
 	pipes := make(chan chan *Session)
 
 	producersGroup := sync.WaitGroup{}

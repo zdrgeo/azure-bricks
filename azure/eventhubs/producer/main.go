@@ -102,7 +102,7 @@ func main() {
 	}
 }
 
-func scanFile(ctx context.Context, fileName string, producerClient *azeventhubs.ProducerClient) error {
+func process(ctx context.Context, fileName string, producerClient *azeventhubs.ProducerClient) error {
 	file, err := os.Open(fileName)
 
 	if err != nil {
@@ -113,18 +113,18 @@ func scanFile(ctx context.Context, fileName string, producerClient *azeventhubs.
 
 	scanner := bufio.NewScanner(file)
 
-	eventBatchProcessor := newEventBatchProcessor(scanner, producerClient)
+	eventBatchProcessor := newEventBatchProcessorFromFileToEventHubs(scanner, producerClient)
 
-	if err := eventBatchProcessor.Run(ctx, 20, false); err != nil {
+	if err := eventBatchProcessor.Run(ctx, 10, false); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-type checkpoint struct {
-	index int
-}
+// type checkpoint struct {
+// 	index int
+// }
 
 type Event struct {
 	Bytes []byte
@@ -134,7 +134,7 @@ type EventBatch struct {
 	Events []*Event
 }
 
-func newEventBatchProducer(scanner *bufio.Scanner) (producerFunc processor.ProducerFunc[*EventBatch, any], producerData any) {
+func newEventBatchProducerFromFile(scanner *bufio.Scanner) (producerFunc processor.ProducerFunc[*EventBatch, any], producerData any) {
 	return func(ctx context.Context, data any) (item *EventBatch, foldData any, err error) {
 		if !scanner.Scan() {
 			if err := scanner.Err(); err != nil {
@@ -158,7 +158,11 @@ func newEventBatchProducer(scanner *bufio.Scanner) (producerFunc processor.Produ
 
 		events = append(events, event)
 
-		for len(events) < eventsLimit && scanner.Scan() {
+		for len(events) < eventsLimit {
+			if !scanner.Scan() {
+				break
+			}
+
 			if err := ctx.Err(); err != nil {
 				return nil, nil, err
 			}
@@ -178,7 +182,7 @@ func newEventBatchProducer(scanner *bufio.Scanner) (producerFunc processor.Produ
 	}, nil
 }
 
-func newEventBatchConsumer(producerClient *azeventhubs.ProducerClient) (consumerFunc processor.ConsumerFunc[*EventBatch, any], consumerData any) {
+func newEventBatchConsumerToEventHubs(producerClient *azeventhubs.ProducerClient) (consumerFunc processor.ConsumerFunc[*EventBatch, any], consumerData any) {
 	return func(ctx context.Context, item *EventBatch, data any) (foldData any, err error) {
 		eventDataBatch, err := producerClient.NewEventDataBatch(ctx, nil)
 
@@ -222,53 +226,21 @@ func newEventBatchConsumer(producerClient *azeventhubs.ProducerClient) (consumer
 	}, nil
 }
 
-func newEventBatchProcessor(scanner *bufio.Scanner, producerClient *azeventhubs.ProducerClient) *processor.Processor[*EventBatch, any, any] {
+func newEventBatchProcessorFromFileToEventHubs(scanner *bufio.Scanner, producerClient *azeventhubs.ProducerClient) *processor.Processor[*EventBatch, any, any] {
 	eventBatchProcessor := processor.NewProcessor[*EventBatch, any, any]()
 
-	producerFunc, producerData := newEventBatchProducer(scanner)
+	producerFunc, producerData := newEventBatchProducerFromFile(scanner)
 
 	eventBatchProcessor.AddProducer(producerFunc, producerData)
 
-	consumerFunc, consumerData := newEventBatchConsumer(producerClient)
+	consumerFunc, consumerData := newEventBatchConsumerToEventHubs(producerClient)
 
 	eventBatchProcessor.AddConsumer(consumerFunc, consumerData)
 
 	return eventBatchProcessor
 }
 
-func RunAlt[Item any](ctx context.Context, size int, producerFunc processor.ProducerFunc[*EventBatch, any], consumerFuncs []processor.ConsumerFunc[*EventBatch, any]) {
-	items := make(chan *EventBatch, size)
-
-	go func() {
-		defer close(items)
-
-		err := processor.Produce(ctx, items, producerFunc, nil)
-
-		if err != nil {
-			log.Panic(err)
-		}
-	}()
-
-	consumerGroups := sync.WaitGroup{}
-
-	consumerGroups.Add(len(consumerFuncs))
-
-	for _, consumerFunc := range consumerFuncs {
-		go func() {
-			defer consumerGroups.Done()
-
-			err := processor.Consume(context.Background(), items, consumerFunc, nil)
-
-			if err != nil {
-				log.Panic(err)
-			}
-		}()
-	}
-
-	consumerGroups.Wait()
-}
-
-func Run[Item any](ctx context.Context, size int, producerFuncs []processor.ProducerFunc[*EventBatch, any], consumerFuncs []processor.ConsumerFunc[*EventBatch, any]) {
+func Run[Item any](ctx context.Context, size int, consumersRunToCompletion bool, producerFuncs []processor.ProducerFunc[*EventBatch, any], consumerFuncs []processor.ConsumerFunc[*EventBatch, any]) {
 	items := make(chan *EventBatch, size)
 
 	producersGroup := sync.WaitGroup{}
@@ -288,13 +260,21 @@ func Run[Item any](ctx context.Context, size int, producerFuncs []processor.Prod
 		}()
 	}
 
+	var consumeCtx context.Context
+
+	if consumersRunToCompletion {
+		consumeCtx = context.Background()
+	} else {
+		consumeCtx = ctx
+	}
+
 	consumersGroup.Add(len(consumerFuncs))
 
 	for _, consumerFunc := range consumerFuncs {
 		go func() {
 			defer consumersGroup.Done()
 
-			err := processor.Consume(context.Background(), items, consumerFunc, nil)
+			err := processor.Consume(consumeCtx, items, consumerFunc, nil)
 
 			if err != nil {
 				log.Panic(err)

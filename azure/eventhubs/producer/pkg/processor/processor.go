@@ -75,7 +75,7 @@ func (processor *Processor[Item, ProducerData, ConsumerData]) AddConsumer(consum
 	processor.consumers = append(processor.consumers, consumer)
 }
 
-func (processor *Processor[Item, ProducerData, ConsumerData]) Run(ctx context.Context, size int, consumersComplete bool) error {
+func (processor *Processor[Item, ProducerData, ConsumerData]) Run(ctx context.Context, size int, consumersRunToCompletion bool) error {
 	items := make(chan Item, size)
 
 	producersGroup := sync.WaitGroup{}
@@ -93,7 +93,7 @@ func (processor *Processor[Item, ProducerData, ConsumerData]) Run(ctx context.Co
 
 	var consumeCtx context.Context
 
-	if consumersComplete {
+	if consumersRunToCompletion {
 		consumeCtx = context.Background()
 	} else {
 		consumeCtx = ctx
@@ -115,7 +115,9 @@ func (processor *Processor[Item, ProducerData, ConsumerData]) Run(ctx context.Co
 
 	consumersGroup.Wait()
 
-	return processor.runErr()
+	err := processor.runErr()
+
+	return err
 }
 
 func (processor *Processor[Item, ProducerData, ConsumerData]) runErr() error {
@@ -159,13 +161,13 @@ func Produce[Item any, ProducerData any](ctx context.Context, items chan<- Item,
 			return err
 		}
 
-		data = foldData
-
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case items <- item:
 		}
+
+		data = foldData
 	}
 }
 

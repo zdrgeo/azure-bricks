@@ -65,7 +65,7 @@ func main() {
 
 	defer receiver.Close(ctx)
 
-	tick := time.Tick(1 * time.Minute)
+	tick := time.Tick(10 * time.Second)
 
 	for done := false; !done; {
 		select {
@@ -116,7 +116,7 @@ func sessionMain() {
 
 			defer sessionReceiver.Close(ctx)
 
-			tick := time.Tick(1 * time.Minute)
+			tick := time.Tick(10 * time.Second)
 
 			for done := false; !done; {
 				select {
@@ -189,7 +189,7 @@ func nextSessionMain() {
 
 				defer timeoutCancel()
 
-				tick := time.Tick(1 * time.Minute)
+				tick := time.Tick(10 * time.Second)
 
 				for done := false; !done; {
 					select {
@@ -267,7 +267,7 @@ func newSessionConsumer() (consumerFunc processor.ConsumerFunc[*Session, any], c
 
 		defer timeoutCancel()
 
-		tick := time.Tick(1 * time.Minute)
+		tick := time.Tick(10 * time.Second)
 
 		for {
 			select {
@@ -296,90 +296,10 @@ func newSessionConsumer() (consumerFunc processor.ConsumerFunc[*Session, any], c
 	}, nil
 }
 
-func Run2[Item any](ctx context.Context, size int, consumersRunToCompletion bool, producerFuncs []processor.ProducerFunc[*Session, any], consumerFuncs []processor.ConsumerFunc[*Session, any]) {
-	beats := make(chan struct{}, len(consumerFuncs))
-	items := make(chan *Session, size)
+func processSessions(ctx context.Context, client *azservicebus.Client) {
+	producerFunc, _ := newSessionProducer(client)
 
-	producersGroup := sync.WaitGroup{}
-	consumersGroup := sync.WaitGroup{}
+	consumerFunc, _ := newSessionConsumer()
 
-	producersGroup.Add(len(producerFuncs))
-
-	for _, producerFunc := range producerFuncs {
-		go func() {
-			defer producersGroup.Done()
-
-			err := processor.Produce2(ctx, beats, items, producerFunc, nil)
-
-			if err != nil {
-				log.Panic(err)
-			}
-		}()
-	}
-
-	var consumeCtx context.Context
-
-	if consumersRunToCompletion {
-		consumeCtx = context.Background()
-	} else {
-		consumeCtx = ctx
-	}
-
-	consumersGroup.Add(len(consumerFuncs))
-
-	for _, consumerFunc := range consumerFuncs {
-		go func() {
-			defer consumersGroup.Done()
-
-			err := processor.Consume2(consumeCtx, beats, items, consumerFunc, nil)
-
-			if err != nil {
-				log.Panic(err)
-			}
-		}()
-	}
-
-	producersGroup.Wait()
-
-	close(items)
-
-	consumersGroup.Wait()
-}
-
-func Run3[Item any](ctx context.Context, size int, producerFuncs []processor.ProducerFunc[*Session, any], consumerFuncs []processor.ConsumerFunc[*Session, any]) {
-	pipes := make(chan chan *Session)
-
-	producersGroup := sync.WaitGroup{}
-	consumersGroup := sync.WaitGroup{}
-
-	producersGroup.Add(len(producerFuncs))
-
-	for _, producerFunc := range producerFuncs {
-		go func() {
-			defer producersGroup.Done()
-
-			err := processor.Produce3(ctx, pipes, producerFunc, nil)
-
-			if err != nil {
-				log.Panic(err)
-			}
-		}()
-	}
-
-	consumersGroup.Add(len(consumerFuncs))
-
-	for _, consumerFunc := range consumerFuncs {
-		go func() {
-			defer consumersGroup.Done()
-
-			err := processor.Consume3(ctx, pipes, consumerFunc, nil)
-
-			if err != nil {
-				log.Panic(err)
-			}
-		}()
-	}
-
-	producersGroup.Wait()
-	consumersGroup.Wait()
+	processor.Run(ctx, 10, []processor.ProducerFunc[*Session, any]{producerFunc}, []processor.ConsumerFunc[*Session, any]{consumerFunc})
 }

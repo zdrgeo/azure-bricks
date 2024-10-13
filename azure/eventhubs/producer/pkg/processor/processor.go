@@ -3,6 +3,7 @@ package processor
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"sync"
 )
@@ -192,4 +193,53 @@ func Consume[Item any, ConsumerData any](ctx context.Context, items <-chan Item,
 			data = foldData
 		}
 	}
+}
+
+func Run[Item any](ctx context.Context, size int, consumersRunToCompletion bool, producerFuncs []ProducerFunc[Item, any], consumerFuncs []ConsumerFunc[Item, any]) {
+	items := make(chan Item, size)
+
+	producersGroup := sync.WaitGroup{}
+	consumersGroup := sync.WaitGroup{}
+
+	producersGroup.Add(len(producerFuncs))
+
+	for _, producerFunc := range producerFuncs {
+		go func() {
+			defer producersGroup.Done()
+
+			err := Produce(ctx, items, producerFunc, nil)
+
+			if err != nil {
+				log.Panic(err)
+			}
+		}()
+	}
+
+	var consumeCtx context.Context
+
+	if consumersRunToCompletion {
+		consumeCtx = context.Background()
+	} else {
+		consumeCtx = ctx
+	}
+
+	consumersGroup.Add(len(consumerFuncs))
+
+	for _, consumerFunc := range consumerFuncs {
+		go func() {
+			defer consumersGroup.Done()
+
+			err := Consume(consumeCtx, items, consumerFunc, nil)
+
+			if err != nil {
+				log.Panic(err)
+			}
+		}()
+	}
+
+	producersGroup.Wait()
+
+	close(items)
+
+	consumersGroup.Wait()
 }

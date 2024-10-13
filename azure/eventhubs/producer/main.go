@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -100,26 +99,6 @@ func main() {
 			producerClient.SendEventDataBatch(ctx, eventDataBatch, nil)
 		}
 	}
-}
-
-func process(ctx context.Context, fileName string, producerClient *azeventhubs.ProducerClient) error {
-	file, err := os.Open(fileName)
-
-	if err != nil {
-		log.Panic(err)
-	}
-
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-
-	eventBatchProcessor := newEventBatchProcessorFromFileToEventHubs(scanner, producerClient)
-
-	if err := eventBatchProcessor.Run(ctx, 10, false); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // type checkpoint struct {
@@ -240,51 +219,22 @@ func newEventBatchProcessorFromFileToEventHubs(scanner *bufio.Scanner, producerC
 	return eventBatchProcessor
 }
 
-func Run[Item any](ctx context.Context, size int, consumersRunToCompletion bool, producerFuncs []processor.ProducerFunc[*EventBatch, any], consumerFuncs []processor.ConsumerFunc[*EventBatch, any]) {
-	items := make(chan *EventBatch, size)
+func processFromFileToEventHubs(ctx context.Context, fileName string, producerClient *azeventhubs.ProducerClient) error {
+	file, err := os.Open(fileName)
 
-	producersGroup := sync.WaitGroup{}
-	consumersGroup := sync.WaitGroup{}
-
-	producersGroup.Add(len(producerFuncs))
-
-	for _, producerFunc := range producerFuncs {
-		go func() {
-			defer producersGroup.Done()
-
-			err := processor.Produce(ctx, items, producerFunc, nil)
-
-			if err != nil {
-				log.Panic(err)
-			}
-		}()
+	if err != nil {
+		log.Panic(err)
 	}
 
-	var consumeCtx context.Context
+	defer file.Close()
 
-	if consumersRunToCompletion {
-		consumeCtx = context.Background()
-	} else {
-		consumeCtx = ctx
+	scanner := bufio.NewScanner(file)
+
+	eventBatchProcessor := newEventBatchProcessorFromFileToEventHubs(scanner, producerClient)
+
+	if err := eventBatchProcessor.Run(ctx, 10, false); err != nil {
+		return err
 	}
 
-	consumersGroup.Add(len(consumerFuncs))
-
-	for _, consumerFunc := range consumerFuncs {
-		go func() {
-			defer consumersGroup.Done()
-
-			err := processor.Consume(consumeCtx, items, consumerFunc, nil)
-
-			if err != nil {
-				log.Panic(err)
-			}
-		}()
-	}
-
-	producersGroup.Wait()
-
-	close(items)
-
-	consumersGroup.Wait()
+	return nil
 }

@@ -18,7 +18,29 @@ import (
 var (
 	credential *azidentity.DefaultAzureCredential
 	client     *azservicebus.Client
+
+	dispatcher *processor.Dispatcher
 )
+
+const (
+	EmployeeMessageDiscriminator processor.MessageDiscriminator = "employee"
+)
+
+type EmployeeMessage struct{}
+
+func (message *EmployeeMessage) MessageDiscriminator() processor.MessageDiscriminator {
+	return EmployeeMessageDiscriminator
+}
+
+type EmployeeHandler struct{}
+
+func (handler *EmployeeHandler) MessageDiscriminator() processor.MessageDiscriminator {
+	return EmployeeMessageDiscriminator
+}
+
+func (handler *EmployeeHandler) Handle(message processor.Message) error {
+	return nil
+}
 
 func init() {
 	viper.AddConfigPath(".")
@@ -50,6 +72,12 @@ func init() {
 	if err != nil {
 		log.Panic(err)
 	}
+
+	dispatcher = &processor.Dispatcher{}
+
+	employeeHandler := &EmployeeHandler{}
+
+	dispatcher.Register(employeeHandler)
 }
 
 func main() {
@@ -72,20 +100,24 @@ func main() {
 		case <-ctx.Done():
 			done = true
 		case <-tick:
-			messages, err := receiver.ReceiveMessages(ctx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
+			serviceBusReceivedMessages, err := receiver.ReceiveMessages(ctx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
 
 			if err != nil {
 				log.Panic(err)
 			}
 
-			for _, message := range messages {
-				if err := handleMessage(message); err != nil {
-					if err := receiver.AbandonMessage(ctx, message, nil); err != nil {
-						log.Panic(err)
+			for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
+				var message processor.Message = nil
+
+				if handler, ok := dispatcher.Dispatch(message); ok {
+					if err := handler.Handle(message); err != nil {
+						if err := receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+							log.Panic(err)
+						}
 					}
 				}
 
-				if err := receiver.CompleteMessage(ctx, message, nil); err != nil {
+				if err := receiver.CompleteMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
 					log.Panic(err)
 				}
 			}
@@ -123,20 +155,24 @@ func sessionMain() {
 				case <-ctx.Done():
 					done = true
 				case <-tick:
-					messages, err := sessionReceiver.ReceiveMessages(ctx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
+					serviceBusReceivedMessages, err := sessionReceiver.ReceiveMessages(ctx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
 
 					if err != nil {
 						log.Panic(err)
 					}
 
-					for _, message := range messages {
-						if err := handleMessage(message); err != nil {
-							if err := sessionReceiver.AbandonMessage(ctx, message, nil); err != nil {
-								log.Panic(err)
+					for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
+						var message processor.Message = nil
+
+						if handler, ok := dispatcher.Dispatch(message); ok {
+							if err := handler.Handle(message); err != nil {
+								if err := sessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+									log.Panic(err)
+								}
 							}
 						}
 
-						if err := sessionReceiver.CompleteMessage(ctx, message, nil); err != nil {
+						if err := sessionReceiver.CompleteMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
 							log.Panic(err)
 						}
 					}
@@ -196,20 +232,24 @@ func nextSessionMain() {
 					case <-ctx.Done():
 						done = true
 					case <-tick:
-						messages, err := sessionReceiver.ReceiveMessages(timeoutCtx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
+						serviceBusReceivedMessages, err := sessionReceiver.ReceiveMessages(timeoutCtx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
 
 						if err != nil {
 							log.Panic(err)
 						}
 
-						for _, message := range messages {
-							if err := handleMessage(message); err != nil {
-								if err := sessionReceiver.AbandonMessage(ctx, message, nil); err != nil {
-									log.Panic(err)
+						for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
+							var message processor.Message = nil
+
+							if handler, ok := dispatcher.Dispatch(message); ok {
+								if err := handler.Handle(message); err != nil {
+									if err := sessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+										log.Panic(err)
+									}
 								}
 							}
 
-							if err := sessionReceiver.CompleteMessage(ctx, message, nil); err != nil {
+							if err := sessionReceiver.CompleteMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
 								log.Panic(err)
 							}
 						}
@@ -220,15 +260,6 @@ func nextSessionMain() {
 	}
 
 	sessionsGroup.Wait()
-}
-
-func handleMessage(message *azservicebus.ReceivedMessage) error {
-	return handleMessageBody(message.Body)
-}
-
-func handleMessageBody(messageBody []byte) error {
-	_ = messageBody
-	return nil
 }
 
 type Session struct {
@@ -259,7 +290,7 @@ func newSessionProducer(client *azservicebus.Client) (producerFunc processor.Pro
 	}, nil
 }
 
-func newSessionConsumer() (consumerFunc processor.ConsumerFunc[*Session, any], consumerData any) {
+func newSessionConsumer(dispatcher *processor.Dispatcher) (consumerFunc processor.ConsumerFunc[*Session, any], consumerData any) {
 	return func(ctx context.Context, item *Session, data any) (foldData any, err error) {
 		defer item.SessionReceiver.Close(ctx)
 
@@ -274,20 +305,24 @@ func newSessionConsumer() (consumerFunc processor.ConsumerFunc[*Session, any], c
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-tick:
-				messages, err := item.SessionReceiver.ReceiveMessages(timeoutCtx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
+				serviceBusReceivedMessages, err := item.SessionReceiver.ReceiveMessages(timeoutCtx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
 
 				if err != nil {
 					return nil, err
 				}
 
-				for _, message := range messages {
-					if err := handleMessage(message); err != nil {
-						if err := item.SessionReceiver.AbandonMessage(ctx, message, nil); err != nil {
-							return nil, err
+				for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
+					var message processor.Message = nil
+
+					if handler, ok := dispatcher.Dispatch(message); ok {
+						if err := handler.Handle(message); err != nil {
+							if err := item.SessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+								return nil, err
+							}
 						}
 					}
 
-					if err := item.SessionReceiver.CompleteMessage(ctx, message, nil); err != nil {
+					if err := item.SessionReceiver.CompleteMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
 						return nil, err
 					}
 				}
@@ -299,7 +334,7 @@ func newSessionConsumer() (consumerFunc processor.ConsumerFunc[*Session, any], c
 func processSessions(ctx context.Context, client *azservicebus.Client) {
 	producerFunc, _ := newSessionProducer(client)
 
-	consumerFunc, _ := newSessionConsumer()
+	consumerFunc, _ := newSessionConsumer(dispatcher)
 
 	processor.Run(ctx, 10, []processor.ProducerFunc[*Session, any]{producerFunc}, []processor.ConsumerFunc[*Session, any]{consumerFunc})
 }

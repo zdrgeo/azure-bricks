@@ -11,14 +11,14 @@ import (
 	"github.com/spf13/viper"
 )
 
-type Discriminator string
+type MessageDiscriminator string
 
 type Message interface {
-	Discriminator() Discriminator
+	MessageDiscriminator() MessageDiscriminator
 }
 
 type Handler interface {
-	Discriminator() Discriminator
+	MessageDiscriminator() MessageDiscriminator
 	Handle(message Message) error
 }
 
@@ -27,13 +27,13 @@ type Publisher interface {
 }
 
 type Dispatcher struct {
-	handlers map[Discriminator]Handler
+	handlers map[MessageDiscriminator]Handler
 }
 
 type UnregisterFunc func()
 
 func (dispatcher *Dispatcher) Register(handler Handler) UnregisterFunc {
-	discriminator := handler.Discriminator()
+	discriminator := handler.MessageDiscriminator()
 
 	dispatcher.handlers[discriminator] = handler
 
@@ -44,18 +44,16 @@ func (dispatcher *Dispatcher) Register(handler Handler) UnregisterFunc {
 	return unregisterFunc
 }
 
-func (dispatcher *Dispatcher) Unregister(discriminator Discriminator) {
+func (dispatcher *Dispatcher) Unregister(discriminator MessageDiscriminator) {
 	delete(dispatcher.handlers, discriminator)
 }
 
-func (dispatcher *Dispatcher) Dispatch(message Message) error {
-	discriminator := message.Discriminator()
+func (dispatcher *Dispatcher) Dispatch(message Message) (Handler, bool) {
+	discriminator := message.MessageDiscriminator()
 
-	if handler, ok := dispatcher.handlers[discriminator]; ok {
-		return handler.Handle(message)
-	}
+	handler, ok := dispatcher.handlers[discriminator]
 
-	return nil
+	return handler, ok
 }
 
 type Subscriber interface {
@@ -113,9 +111,11 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 			for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
 				var message Message = nil
 
-				if err := subscriber.dispatcher.Dispatch(message); err != nil {
-					if err := subscriber.receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
-						return err
+				if handler, ok := subscriber.dispatcher.Dispatch(message); ok {
+					if err := handler.Handle(message); err != nil {
+						if err := subscriber.receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+							return err
+						}
 					}
 				}
 

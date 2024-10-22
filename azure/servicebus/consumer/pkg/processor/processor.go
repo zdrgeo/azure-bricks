@@ -2,6 +2,7 @@ package processor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"sync"
@@ -11,49 +12,60 @@ import (
 	"github.com/spf13/viper"
 )
 
-type MessageDiscriminator string
+type Discriminator string
+
+const (
+	EmptyDiscriminator Discriminator = ""
+)
 
 type Message interface {
-	MessageDiscriminator() MessageDiscriminator
-}
-
-type Handler interface {
-	MessageDiscriminator() MessageDiscriminator
-	Handle(message Message) error
+	Discriminator() Discriminator
 }
 
 type Publisher interface {
 	Publish(message Message) error
 }
 
-type Dispatcher struct {
-	handlers map[MessageDiscriminator]Handler
+type Handler interface {
+	Discriminator() Discriminator
+	Create() Message
+	Handle(message Message) error
 }
 
-type UnregisterFunc func()
+type Dispatcher struct {
+	handlers map[Discriminator]Handler
+}
 
-func (dispatcher *Dispatcher) Register(handler Handler) UnregisterFunc {
-	discriminator := handler.MessageDiscriminator()
+func (dispatcher *Dispatcher) Register(handler Handler) {
+	discriminator := handler.Discriminator()
 
 	dispatcher.handlers[discriminator] = handler
-
-	unregisterFunc := func() {
-		dispatcher.Unregister(discriminator)
-	}
-
-	return unregisterFunc
 }
 
-func (dispatcher *Dispatcher) Unregister(discriminator MessageDiscriminator) {
+func (dispatcher *Dispatcher) Unregister(discriminator Discriminator) {
 	delete(dispatcher.handlers, discriminator)
 }
 
-func (dispatcher *Dispatcher) Dispatch(message Message) (Handler, bool) {
-	discriminator := message.MessageDiscriminator()
-
+func (dispatcher *Dispatcher) Dispatch(discriminator Discriminator) (Handler, bool) {
 	handler, ok := dispatcher.handlers[discriminator]
 
 	return handler, ok
+}
+
+func UnmarshalDiscriminator(data []byte) (Discriminator, error) {
+	message := &struct {
+		Discriminator string `json:"discriminator"`
+	}{}
+
+	if err := json.Unmarshal(data, &message); err != nil {
+		return EmptyDiscriminator, err
+	}
+
+	return Discriminator(message.Discriminator), nil
+}
+
+func UnmarshalMessage(data []byte, message Message) error {
+	return json.Unmarshal(data, message)
 }
 
 type Subscriber interface {
@@ -109,9 +121,19 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 			}
 
 			for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
-				var message Message = nil
+				discriminator, err := UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
 
-				if handler, ok := subscriber.dispatcher.Dispatch(message); ok {
+				if err != nil {
+					log.Panic(err)
+				}
+
+				if handler, ok := subscriber.dispatcher.Dispatch(discriminator); ok {
+					message := handler.Create()
+
+					if err := UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
+						log.Panic(err)
+					}
+
 					if err := handler.Handle(message); err != nil {
 						if err := subscriber.receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
 							return err

@@ -23,19 +23,23 @@ var (
 )
 
 const (
-	EmployeeMessageDiscriminator processor.MessageDiscriminator = "employee"
+	EmployeeDiscriminator processor.Discriminator = "employee"
 )
 
 type EmployeeMessage struct{}
 
-func (message *EmployeeMessage) MessageDiscriminator() processor.MessageDiscriminator {
-	return EmployeeMessageDiscriminator
+func (message *EmployeeMessage) Discriminator() processor.Discriminator {
+	return EmployeeDiscriminator
 }
 
 type EmployeeHandler struct{}
 
-func (handler *EmployeeHandler) MessageDiscriminator() processor.MessageDiscriminator {
-	return EmployeeMessageDiscriminator
+func (handler *EmployeeHandler) Discriminator() processor.Discriminator {
+	return EmployeeDiscriminator
+}
+
+func (handler *EmployeeHandler) Create() processor.Message {
+	return &EmployeeMessage{}
 }
 
 func (handler *EmployeeHandler) Handle(message processor.Message) error {
@@ -107,9 +111,19 @@ func main() {
 			}
 
 			for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
-				var message processor.Message = nil
+				discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
 
-				if handler, ok := dispatcher.Dispatch(message); ok {
+				if err != nil {
+					log.Panic(err)
+				}
+
+				if handler, ok := dispatcher.Dispatch(discriminator); ok {
+					message := handler.Create()
+
+					if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
+						log.Panic(err)
+					}
+
 					if err := handler.Handle(message); err != nil {
 						if err := receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
 							log.Panic(err)
@@ -162,9 +176,19 @@ func sessionMain() {
 					}
 
 					for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
-						var message processor.Message = nil
+						discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
 
-						if handler, ok := dispatcher.Dispatch(message); ok {
+						if err != nil {
+							log.Panic(err)
+						}
+
+						if handler, ok := dispatcher.Dispatch(discriminator); ok {
+							message := handler.Create()
+
+							if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
+								log.Panic(err)
+							}
+
 							if err := handler.Handle(message); err != nil {
 								if err := sessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
 									log.Panic(err)
@@ -239,9 +263,19 @@ func nextSessionMain() {
 						}
 
 						for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
-							var message processor.Message = nil
+							discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
 
-							if handler, ok := dispatcher.Dispatch(message); ok {
+							if err != nil {
+								log.Panic(err)
+							}
+
+							if handler, ok := dispatcher.Dispatch(discriminator); ok {
+								message := handler.Create()
+
+								if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
+									log.Panic(err)
+								}
+
 								if err := handler.Handle(message); err != nil {
 									if err := sessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
 										log.Panic(err)
@@ -312,9 +346,19 @@ func newSessionConsumer(dispatcher *processor.Dispatcher) (consumerFunc processo
 				}
 
 				for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
-					var message processor.Message = nil
+					discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
 
-					if handler, ok := dispatcher.Dispatch(message); ok {
+					if err != nil {
+						log.Panic(err)
+					}
+
+					if handler, ok := dispatcher.Dispatch(discriminator); ok {
+						message := handler.Create()
+
+						if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
+							log.Panic(err)
+						}
+
 						if err := handler.Handle(message); err != nil {
 							if err := item.SessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
 								return nil, err

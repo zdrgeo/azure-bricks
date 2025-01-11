@@ -51,8 +51,7 @@ func init() {
 	viper.SetEnvPrefix("demo")
 	viper.AutomaticEnv()
 
-	viper.SetDefault("AZURE_SERVICEBUS_SESSION_LIMIT", 10)
-	viper.SetDefault("AZURE_SERVICEBUS_MESSAGE_LIMIT", 1)
+	viper.SetDefault("AZURE_SERVICEBUS_MESSAGES_LIMIT", 1)
 
 	if err := viper.ReadInConfig(); err != nil {
 		log.Panic(err)
@@ -74,7 +73,7 @@ func init() {
 		log.Panic(err)
 	}
 
-	dispatcher = &processor.Dispatcher{}
+	dispatcher = processor.NewDispatcher()
 
 	employeeHandler := &EmployeeHandler{}
 

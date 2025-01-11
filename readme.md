@@ -9,8 +9,9 @@ Templates
 - Azure Service Bus
     - [Producer](azure/servicebus/producer/readme.md)
     - [Consumer](azure/servicebus/consumer/readme.md)
-    - Consumer with fixed sessions
-    - Consumer with sessions
+    - Session
+        - Consumer with fixed sessions
+        - Consumer with sessions
 - Azure Event Hubs
     - [Producer](azure/eventhubs/producer/readme.md)
     - [Consumer](azure/eventhubs/consumer/readme.md)

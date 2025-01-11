@@ -37,6 +37,12 @@ type Dispatcher struct {
 	handlers map[Discriminator]Handler
 }
 
+func NewDispatcher() *Dispatcher {
+	return &Dispatcher{
+		handlers: map[Discriminator]Handler{},
+	}
+}
+
 func (dispatcher *Dispatcher) Register(handler Handler) {
 	discriminator := handler.Discriminator()
 

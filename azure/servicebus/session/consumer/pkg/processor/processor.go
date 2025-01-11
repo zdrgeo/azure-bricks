@@ -3,6 +3,9 @@ package processor
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"log"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
@@ -148,4 +151,114 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+type ProducerFunc[Item any, Data any] func(ctx context.Context, data Data) (item Item, foldData Data, err error)
+type ConsumerFunc[Item any, Data any] func(ctx context.Context, item Item, data Data) (foldData Data, err error)
+
+var ErrProducerComplete = errors.New("producer complete")
+
+func Produce[Item any, ProducerData any](ctx context.Context, pipes <-chan chan Item, producerFunc ProducerFunc[Item, ProducerData], producerData ProducerData) error {
+	data := producerData
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case items, ok := <-pipes:
+			if !ok {
+				return nil
+			}
+
+			item, foldData, err := producerFunc(ctx, data)
+
+			if err != nil {
+				if errors.Is(err, ErrProducerComplete) {
+					return nil
+				}
+
+				return err
+			}
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case items <- item:
+			}
+
+			data = foldData
+		}
+	}
+}
+
+func Consume[Item any, ConsumerData any](ctx context.Context, pipes chan<- chan Item, items chan Item, consumerFunc ConsumerFunc[Item, ConsumerData], consumerData ConsumerData) error {
+	data := consumerData
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case pipes <- items:
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case item, ok := <-items:
+				if !ok {
+					return nil
+				}
+
+				foldData, err := consumerFunc(ctx, item, data)
+
+				if err != nil {
+					return err
+				}
+
+				data = foldData
+			}
+		}
+	}
+}
+
+func Run[Item any](ctx context.Context, size int, producerFuncs []ProducerFunc[Item, any], consumerFuncs []ConsumerFunc[Item, any]) {
+	pipes := make(chan chan Item)
+
+	// defer close(pipes)
+
+	producersGroup := sync.WaitGroup{}
+	consumersGroup := sync.WaitGroup{}
+
+	producersGroup.Add(len(producerFuncs))
+
+	for _, producerFunc := range producerFuncs {
+		go func() {
+			defer producersGroup.Done()
+
+			err := Produce(ctx, pipes, producerFunc, nil)
+
+			if err != nil {
+				log.Panic(err)
+			}
+		}()
+	}
+
+	consumersGroup.Add(len(consumerFuncs))
+
+	for _, consumerFunc := range consumerFuncs {
+		go func() {
+			defer consumersGroup.Done()
+
+			items := make(chan Item)
+
+			// defer close(items)
+
+			err := Consume(ctx, pipes, items, consumerFunc, nil)
+
+			if err != nil {
+				log.Panic(err)
+			}
+		}()
+	}
+
+	producersGroup.Wait()
+	consumersGroup.Wait()
 }

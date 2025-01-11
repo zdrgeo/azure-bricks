@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
@@ -95,48 +94,9 @@ func main() {
 
 	defer receiver.Close(ctx)
 
-	tick := time.Tick(10 * time.Second)
+	serviceBusSubscriber := processor.NewServiceBusSubscriber(receiver, dispatcher)
 
-	for done := false; !done; {
-		select {
-		case <-ctx.Done():
-			done = true
-		case <-tick:
-			serviceBusReceivedMessages, err := receiver.ReceiveMessages(ctx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
-
-			if err != nil {
-				log.Panic(err)
-			}
-
-			for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
-				discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
-
-				if err != nil {
-					if err := receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
-						log.Panic(err)
-					}
-				}
-
-				if handler, ok := dispatcher.Dispatch(discriminator); ok {
-					message := handler.Create()
-
-					if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
-						if err := receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
-							log.Panic(err)
-						}
-					}
-
-					if err := handler.Handle(message); err != nil {
-						if err := receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
-							log.Panic(err)
-						}
-					}
-				}
-
-				if err := receiver.CompleteMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
-					log.Panic(err)
-				}
-			}
-		}
+	if err := serviceBusSubscriber.Run(ctx); err != nil {
+		log.Panic(err)
 	}
 }

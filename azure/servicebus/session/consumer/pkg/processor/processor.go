@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
 	"github.com/spf13/viper"
 )
@@ -124,7 +125,12 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 				discriminator, err := UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
 
 				if err != nil {
-					if err := subscriber.receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+					deadLetterOptions := &azservicebus.DeadLetterOptions{
+						ErrorDescription: to.Ptr(err.Error()),
+						Reason:           to.Ptr("UnmarshalDiscriminatorError"),
+					}
+
+					if err := subscriber.receiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
 						return err
 					}
 				}
@@ -133,7 +139,12 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 					message := handler.Create()
 
 					if err := UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
-						if err := subscriber.receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+						deadLetterOptions := &azservicebus.DeadLetterOptions{
+							ErrorDescription: to.Ptr(err.Error()),
+							Reason:           to.Ptr("UnmarshalMessageError"),
+						}
+
+						if err := subscriber.receiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
 							return err
 						}
 					}
@@ -146,6 +157,12 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 				}
 
 				if err := subscriber.receiver.CompleteMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+					var serviceBusErr *azservicebus.Error
+
+					if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+						continue
+					}
+
 					return err
 				}
 			}

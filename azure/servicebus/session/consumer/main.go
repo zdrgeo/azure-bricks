@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
 	"github.com/spf13/viper"
@@ -124,7 +125,12 @@ func main() {
 						discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
 
 						if err != nil {
-							if err := sessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+							deadLetterOptions := &azservicebus.DeadLetterOptions{
+								ErrorDescription: to.Ptr(err.Error()),
+								Reason:           to.Ptr("UnmarshalDiscriminatorError"),
+							}
+
+							if err := sessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
 								log.Panic(err)
 							}
 						}
@@ -133,7 +139,12 @@ func main() {
 							message := handler.Create()
 
 							if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
-								if err := sessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+								deadLetterOptions := &azservicebus.DeadLetterOptions{
+									ErrorDescription: to.Ptr(err.Error()),
+									Reason:           to.Ptr("UnmarshalMessageError"),
+								}
+
+								if err := sessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
 									log.Panic(err)
 								}
 							}
@@ -146,6 +157,12 @@ func main() {
 						}
 
 						if err := sessionReceiver.CompleteMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+							var serviceBusErr *azservicebus.Error
+
+							if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+								continue
+							}
+
 							log.Panic(err)
 						}
 					}
@@ -215,7 +232,12 @@ func nextMain() {
 							discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
 
 							if err != nil {
-								if err := sessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+								deadLetterOptions := &azservicebus.DeadLetterOptions{
+									ErrorDescription: to.Ptr(err.Error()),
+									Reason:           to.Ptr("UnmarshalDiscriminatorError"),
+								}
+
+								if err := sessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
 									log.Panic(err)
 								}
 							}
@@ -224,7 +246,12 @@ func nextMain() {
 								message := handler.Create()
 
 								if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
-									if err := sessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+									deadLetterOptions := &azservicebus.DeadLetterOptions{
+										ErrorDescription: to.Ptr(err.Error()),
+										Reason:           to.Ptr("UnmarshalMessageError"),
+									}
+
+									if err := sessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
 										log.Panic(err)
 									}
 								}
@@ -237,6 +264,12 @@ func nextMain() {
 							}
 
 							if err := sessionReceiver.CompleteMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+								var serviceBusErr *azservicebus.Error
+
+								if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+									continue
+								}
+
 								log.Panic(err)
 							}
 						}
@@ -302,7 +335,12 @@ func newSessionConsumer(dispatcher *processor.Dispatcher) (consumerFunc processo
 					discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
 
 					if err != nil {
-						if err := item.SessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+						deadLetterOptions := &azservicebus.DeadLetterOptions{
+							ErrorDescription: to.Ptr(err.Error()),
+							Reason:           to.Ptr("UnmarshalDiscriminatorError"),
+						}
+
+						if err := item.SessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
 							return nil, err
 						}
 					}
@@ -311,7 +349,12 @@ func newSessionConsumer(dispatcher *processor.Dispatcher) (consumerFunc processo
 						message := handler.Create()
 
 						if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
-							if err := item.SessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+							deadLetterOptions := &azservicebus.DeadLetterOptions{
+								ErrorDescription: to.Ptr(err.Error()),
+								Reason:           to.Ptr("UnmarshalMessageError"),
+							}
+
+							if err := item.SessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
 								return nil, err
 							}
 						}
@@ -324,6 +367,12 @@ func newSessionConsumer(dispatcher *processor.Dispatcher) (consumerFunc processo
 					}
 
 					if err := item.SessionReceiver.CompleteMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+						var serviceBusErr *azservicebus.Error
+
+						if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+							continue
+						}
+
 						return nil, err
 					}
 				}

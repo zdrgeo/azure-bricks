@@ -135,6 +135,12 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 					}
 
 					if err := subscriber.receiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
+						var serviceBusErr *azservicebus.Error
+
+						if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+							continue
+						}
+
 						return err
 					}
 				}
@@ -149,12 +155,24 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 						}
 
 						if err := subscriber.receiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
+							var serviceBusErr *azservicebus.Error
+
+							if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+								continue
+							}
+
 							return err
 						}
 					}
 
 					if err := handler.Handle(message); err != nil {
 						if err := subscriber.receiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+							var serviceBusErr *azservicebus.Error
+
+							if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+								continue
+							}
+
 							return err
 						}
 					}

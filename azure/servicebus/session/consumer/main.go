@@ -100,7 +100,11 @@ func main() {
 		go func() {
 			defer sessionsGroup.Done()
 
-			sessionReceiver, err := client.AcceptSessionForSubscription(ctx, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), session, nil)
+			sessionReceiverOptions := &azservicebus.SessionReceiverOptions{
+				ReceiveMode: azservicebus.ReceiveModePeekLock,
+			}
+
+			sessionReceiver, err := client.AcceptSessionForSubscription(ctx, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), session, sessionReceiverOptions)
 
 			if err != nil {
 				log.Panic(err)
@@ -131,6 +135,12 @@ func main() {
 							}
 
 							if err := sessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
+								var serviceBusErr *azservicebus.Error
+
+								if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+									continue
+								}
+
 								log.Panic(err)
 							}
 						}
@@ -145,12 +155,24 @@ func main() {
 								}
 
 								if err := sessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
+									var serviceBusErr *azservicebus.Error
+
+									if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+										continue
+									}
+
 									log.Panic(err)
 								}
 							}
 
 							if err := handler.Handle(message); err != nil {
 								if err := sessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+									var serviceBusErr *azservicebus.Error
+
+									if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+										continue
+									}
+
 									log.Panic(err)
 								}
 							}
@@ -197,7 +219,11 @@ func nextMain() {
 					<-sessionsLimit
 				}()
 
-				sessionReceiver, err := client.AcceptNextSessionForSubscription(ctx, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), nil)
+				sessionReceiverOptions := &azservicebus.SessionReceiverOptions{
+					ReceiveMode: azservicebus.ReceiveModePeekLock,
+				}
+
+				sessionReceiver, err := client.AcceptNextSessionForSubscription(ctx, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), sessionReceiverOptions)
 
 				if err != nil {
 					var serviceBusErr *azservicebus.Error
@@ -238,6 +264,12 @@ func nextMain() {
 								}
 
 								if err := sessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
+									var serviceBusErr *azservicebus.Error
+
+									if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+										continue
+									}
+
 									log.Panic(err)
 								}
 							}
@@ -252,12 +284,24 @@ func nextMain() {
 									}
 
 									if err := sessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
+										var serviceBusErr *azservicebus.Error
+
+										if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+											continue
+										}
+
 										log.Panic(err)
 									}
 								}
 
 								if err := handler.Handle(message); err != nil {
 									if err := sessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+										var serviceBusErr *azservicebus.Error
+
+										if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+											continue
+										}
+
 										log.Panic(err)
 									}
 								}
@@ -289,7 +333,11 @@ type Session struct {
 func newSessionProducer(client *azservicebus.Client) (producerFunc processor.ProducerFunc[*Session, any], producerData any) {
 	return func(ctx context.Context, data any) (item *Session, foldData any, err error) {
 		for {
-			sessionReceiver, err := client.AcceptNextSessionForSubscription(ctx, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), nil)
+			sessionReceiverOptions := &azservicebus.SessionReceiverOptions{
+				ReceiveMode: azservicebus.ReceiveModePeekLock,
+			}
+
+			sessionReceiver, err := client.AcceptNextSessionForSubscription(ctx, viper.GetString("AZURE_SERVICEBUS_TOPIC"), viper.GetString("AZURE_SERVICEBUS_SUBSCRIPTION"), sessionReceiverOptions)
 
 			if err != nil {
 				var serviceBusErr *azservicebus.Error
@@ -341,6 +389,12 @@ func newSessionConsumer(dispatcher *processor.Dispatcher) (consumerFunc processo
 						}
 
 						if err := item.SessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
+							var serviceBusErr *azservicebus.Error
+
+							if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+								continue
+							}
+
 							return nil, err
 						}
 					}
@@ -355,12 +409,24 @@ func newSessionConsumer(dispatcher *processor.Dispatcher) (consumerFunc processo
 							}
 
 							if err := item.SessionReceiver.DeadLetterMessage(ctx, serviceBusReceivedMessage, deadLetterOptions); err != nil {
+								var serviceBusErr *azservicebus.Error
+
+								if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+									continue
+								}
+
 								return nil, err
 							}
 						}
 
 						if err := handler.Handle(message); err != nil {
 							if err := item.SessionReceiver.AbandonMessage(ctx, serviceBusReceivedMessage, nil); err != nil {
+								var serviceBusErr *azservicebus.Error
+
+								if errors.As(err, &serviceBusErr) && serviceBusErr.Code == azservicebus.CodeLockLost {
+									continue
+								}
+
 								return nil, err
 							}
 						}

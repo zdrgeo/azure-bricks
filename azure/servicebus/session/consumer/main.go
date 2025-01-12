@@ -24,19 +24,19 @@ var (
 )
 
 const (
-	EmployeeDiscriminator processor.Discriminator = "employee"
+	DiscriminatorEmployee processor.Discriminator = "employee"
 )
 
 type EmployeeMessage struct{}
 
 func (message *EmployeeMessage) Discriminator() processor.Discriminator {
-	return EmployeeDiscriminator
+	return DiscriminatorEmployee
 }
 
 type EmployeeHandler struct{}
 
 func (handler *EmployeeHandler) Discriminator() processor.Discriminator {
-	return EmployeeDiscriminator
+	return DiscriminatorEmployee
 }
 
 func (handler *EmployeeHandler) Create() processor.Message {
@@ -80,9 +80,7 @@ func init() {
 
 	dispatcher = processor.NewDispatcher()
 
-	employeeHandler := &EmployeeHandler{}
-
-	dispatcher.Register(employeeHandler)
+	dispatcher.Register(&EmployeeHandler{})
 }
 
 func main() {

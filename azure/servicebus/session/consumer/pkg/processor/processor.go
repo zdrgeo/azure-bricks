@@ -16,7 +16,7 @@ import (
 type Discriminator string
 
 const (
-	EmptyDiscriminator Discriminator = ""
+	DiscriminatorEmpty Discriminator = ""
 )
 
 type Message interface {
@@ -65,7 +65,7 @@ func UnmarshalDiscriminator(data []byte) (Discriminator, error) {
 	}{}
 
 	if err := json.Unmarshal(data, &message); err != nil {
-		return EmptyDiscriminator, err
+		return DiscriminatorEmpty, err
 	}
 
 	return Discriminator(message.Discriminator), nil

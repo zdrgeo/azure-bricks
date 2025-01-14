@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
@@ -51,6 +52,7 @@ func init() {
 	viper.SetEnvPrefix("demo")
 	viper.AutomaticEnv()
 
+	viper.SetDefault("AZURE_SERVICEBUS_INTERVAL", 10*time.Second)
 	viper.SetDefault("AZURE_SERVICEBUS_MESSAGES_LIMIT", 1)
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -95,7 +97,11 @@ func main() {
 
 	defer receiver.Close(ctx)
 
-	serviceBusSubscriber := processor.NewServiceBusSubscriber(receiver, dispatcher)
+	subscriberOptions := &processor.SubscriberOptions{
+		Interval: viper.GetDuration("AZURE_SERVICEBUS_INTERVAL"),
+	}
+
+	serviceBusSubscriber := processor.NewServiceBusSubscriber(receiver, dispatcher, subscriberOptions)
 
 	if err := serviceBusSubscriber.Run(ctx); err != nil {
 		log.Panic(err)

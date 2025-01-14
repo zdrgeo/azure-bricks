@@ -79,13 +79,17 @@ type Subscriber interface {
 	Run(ctx context.Context) error
 }
 
+type PublisherOptions struct{}
+
 type ServiceBusPublisher struct {
-	sender *azservicebus.Sender
+	sender  *azservicebus.Sender
+	options *PublisherOptions
 }
 
-func NewServiceBusPublisher(sender *azservicebus.Sender) *ServiceBusPublisher {
+func NewServiceBusPublisher(sender *azservicebus.Sender, options *PublisherOptions) *ServiceBusPublisher {
 	return &ServiceBusPublisher{
-		sender: sender,
+		sender:  sender,
+		options: options,
 	}
 }
 
@@ -101,20 +105,32 @@ func (publisher *ServiceBusPublisher) Publish(ctx context.Context, message Messa
 	return nil
 }
 
+type SubscriberOptions struct {
+	Interval time.Duration
+}
+
 type ServiceBusSubscriber struct {
 	receiver   *azservicebus.Receiver
 	dispatcher *Dispatcher
+	options    *SubscriberOptions
 }
 
-func NewServiceBusSubscriber(receiver *azservicebus.Receiver, dispatcher *Dispatcher) *ServiceBusSubscriber {
+func NewServiceBusSubscriber(receiver *azservicebus.Receiver, dispatcher *Dispatcher, options *SubscriberOptions) *ServiceBusSubscriber {
 	return &ServiceBusSubscriber{
 		receiver:   receiver,
 		dispatcher: dispatcher,
+		options:    options,
 	}
 }
 
 func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
-	tick := time.Tick(10 * time.Second)
+	interval := 1 * time.Minute
+
+	if subscriber.options != nil && subscriber.options.Interval > 0 {
+		interval = subscriber.options.Interval
+	}
+
+	tick := time.Tick(interval)
 
 	for {
 		select {

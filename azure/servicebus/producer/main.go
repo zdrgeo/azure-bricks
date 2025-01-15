@@ -59,7 +59,7 @@ func main() {
 
 	defer sender.Close(ctx)
 
-	tick := time.Tick(1 * time.Minute)
+	tick := time.Tick(10 * time.Second)
 
 	for done := false; !done; {
 		select {

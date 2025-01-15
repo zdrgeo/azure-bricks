@@ -98,7 +98,8 @@ func main() {
 	defer receiver.Close(ctx)
 
 	subscriberOptions := &processor.SubscriberOptions{
-		Interval: viper.GetDuration("AZURE_SERVICEBUS_INTERVAL"),
+		Interval:      viper.GetDuration("AZURE_SERVICEBUS_INTERVAL"),
+		MessagesLimit: viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"),
 	}
 
 	serviceBusSubscriber := processor.NewServiceBusSubscriber(receiver, dispatcher, subscriberOptions)

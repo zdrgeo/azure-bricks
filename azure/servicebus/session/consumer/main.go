@@ -55,8 +55,8 @@ func init() {
 	viper.SetEnvPrefix("demo")
 	viper.AutomaticEnv()
 
+	viper.SetDefault("AZURE_SERVICEBUS_INTERVAL", 10*time.Second)
 	viper.SetDefault("AZURE_SERVICEBUS_SESSIONS_LIMIT", 10)
-	viper.SetDefault("AZURE_SERVICEBUS_MESSAGES_LIMIT", 1)
 
 	if err := viper.ReadInConfig(); err != nil {
 		log.Panic(err)

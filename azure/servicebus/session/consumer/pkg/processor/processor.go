@@ -10,7 +10,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
-	"github.com/spf13/viper"
 )
 
 type Discriminator string
@@ -106,7 +105,8 @@ func (publisher *ServiceBusPublisher) Publish(ctx context.Context, message Messa
 }
 
 type SubscriberOptions struct {
-	Interval time.Duration
+	Interval      time.Duration
+	MessagesLimit int
 }
 
 type ServiceBusSubscriber struct {
@@ -125,9 +125,16 @@ func NewServiceBusSubscriber(receiver *azservicebus.Receiver, dispatcher *Dispat
 
 func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 	interval := 1 * time.Minute
+	messagesLimit := 1
 
-	if subscriber.options != nil && subscriber.options.Interval > 0 {
-		interval = subscriber.options.Interval
+	if subscriber.options != nil {
+		if subscriber.options.Interval > 0 {
+			interval = subscriber.options.Interval
+		}
+
+		if subscriber.options.MessagesLimit > 0 {
+			messagesLimit = subscriber.options.MessagesLimit
+		}
 	}
 
 	tick := time.Tick(interval)
@@ -137,7 +144,7 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-tick:
-			serviceBusReceivedMessages, err := subscriber.receiver.ReceiveMessages(ctx, viper.GetInt("AZURE_SERVICEBUS_MESSAGES_LIMIT"), nil)
+			serviceBusReceivedMessages, err := subscriber.receiver.ReceiveMessages(ctx, messagesLimit, nil)
 
 			if err != nil {
 				return err

@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"sync"
@@ -58,43 +57,37 @@ func (dispatcher *Dispatcher) Dispatch(discriminator Discriminator) (Handler, bo
 	return handler, ok
 }
 
-func UnmarshalDiscriminator(data []byte) (Discriminator, error) {
-	message := &struct {
-		Discriminator string `json:"discriminator"`
-	}{}
-
-	if err := json.Unmarshal(data, &message); err != nil {
-		return DiscriminatorEmpty, err
-	}
-
-	return Discriminator(message.Discriminator), nil
-}
-
-func UnmarshalMessage(data []byte, message Message) error {
-	return json.Unmarshal(data, message)
-}
-
 type Subscriber interface {
 	Run(ctx context.Context) error
 }
 
+type MarshalMessageFunc func(message Message) ([]byte, error)
+
 type PublisherOptions struct{}
 
 type ServiceBusPublisher struct {
-	sender  *azservicebus.Sender
-	options *PublisherOptions
+	sender             *azservicebus.Sender
+	marshalMessageFunc MarshalMessageFunc
+	options            *PublisherOptions
 }
 
-func NewServiceBusPublisher(sender *azservicebus.Sender, options *PublisherOptions) *ServiceBusPublisher {
+func NewServiceBusPublisher(sender *azservicebus.Sender, marshalMessageFunc MarshalMessageFunc, options *PublisherOptions) *ServiceBusPublisher {
 	return &ServiceBusPublisher{
-		sender:  sender,
-		options: options,
+		sender:             sender,
+		marshalMessageFunc: marshalMessageFunc,
+		options:            options,
 	}
 }
 
 func (publisher *ServiceBusPublisher) Publish(ctx context.Context, message Message) error {
+	body, err := publisher.marshalMessageFunc(message)
+
+	if err != nil {
+		return err
+	}
+
 	serviceBusMessage := &azservicebus.Message{
-		Body: []byte{},
+		Body: body,
 	}
 
 	if err := publisher.sender.SendMessage(ctx, serviceBusMessage, nil); err != nil {
@@ -104,22 +97,30 @@ func (publisher *ServiceBusPublisher) Publish(ctx context.Context, message Messa
 	return nil
 }
 
+type UnmarshalDiscriminatorFunc func(body []byte, discriminator *Discriminator) error
+
+type UnmarshalMessageFunc func(body []byte, message Message) error
+
 type SubscriberOptions struct {
 	Interval      time.Duration
 	MessagesLimit int
 }
 
 type ServiceBusSubscriber struct {
-	receiver   *azservicebus.Receiver
-	dispatcher *Dispatcher
-	options    *SubscriberOptions
+	receiver                   *azservicebus.Receiver
+	dispatcher                 *Dispatcher
+	unmarshalDiscriminatorFunc UnmarshalDiscriminatorFunc
+	unmarshalMessageFunc       UnmarshalMessageFunc
+	options                    *SubscriberOptions
 }
 
-func NewServiceBusSubscriber(receiver *azservicebus.Receiver, dispatcher *Dispatcher, options *SubscriberOptions) *ServiceBusSubscriber {
+func NewServiceBusSubscriber(receiver *azservicebus.Receiver, dispatcher *Dispatcher, unmarshalDiscriminatorFunc UnmarshalDiscriminatorFunc, unmarshalMessageFunc UnmarshalMessageFunc, options *SubscriberOptions) *ServiceBusSubscriber {
 	return &ServiceBusSubscriber{
-		receiver:   receiver,
-		dispatcher: dispatcher,
-		options:    options,
+		receiver:                   receiver,
+		dispatcher:                 dispatcher,
+		unmarshalDiscriminatorFunc: unmarshalDiscriminatorFunc,
+		unmarshalMessageFunc:       unmarshalMessageFunc,
+		options:                    options,
 	}
 }
 
@@ -151,9 +152,9 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 			}
 
 			for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
-				discriminator, err := UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
+				discriminator := DiscriminatorEmpty
 
-				if err != nil {
+				if err := subscriber.unmarshalDiscriminatorFunc(serviceBusReceivedMessage.Body, &discriminator); err != nil {
 					deadLetterOptions := &azservicebus.DeadLetterOptions{
 						ErrorDescription: to.Ptr(err.Error()),
 						Reason:           to.Ptr("UnmarshalDiscriminatorError"),
@@ -173,7 +174,7 @@ func (subscriber *ServiceBusSubscriber) Run(ctx context.Context) error {
 				if handler, ok := subscriber.dispatcher.Dispatch(discriminator); ok {
 					message := handler.Create()
 
-					if err := UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
+					if err := subscriber.unmarshalMessageFunc(serviceBusReceivedMessage.Body, message); err != nil {
 						deadLetterOptions := &azservicebus.DeadLetterOptions{
 							ErrorDescription: to.Ptr(err.Error()),
 							Reason:           to.Ptr("UnmarshalMessageError"),

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"os"
@@ -124,9 +125,9 @@ func main() {
 					}
 
 					for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
-						discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
+						discriminator := processor.DiscriminatorEmpty
 
-						if err != nil {
+						if err := unmarshalDiscriminator(serviceBusReceivedMessage.Body, &discriminator); err != nil {
 							deadLetterOptions := &azservicebus.DeadLetterOptions{
 								ErrorDescription: to.Ptr(err.Error()),
 								Reason:           to.Ptr("UnmarshalDiscriminatorError"),
@@ -146,7 +147,7 @@ func main() {
 						if handler, ok := dispatcher.Dispatch(discriminator); ok {
 							message := handler.Create()
 
-							if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
+							if err := unmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
 								deadLetterOptions := &azservicebus.DeadLetterOptions{
 									ErrorDescription: to.Ptr(err.Error()),
 									Reason:           to.Ptr("UnmarshalMessageError"),
@@ -253,9 +254,9 @@ func nextMain() {
 						}
 
 						for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
-							discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
+							discriminator := processor.DiscriminatorEmpty
 
-							if err != nil {
+							if err := unmarshalDiscriminator(serviceBusReceivedMessage.Body, &discriminator); err != nil {
 								deadLetterOptions := &azservicebus.DeadLetterOptions{
 									ErrorDescription: to.Ptr(err.Error()),
 									Reason:           to.Ptr("UnmarshalDiscriminatorError"),
@@ -275,7 +276,7 @@ func nextMain() {
 							if handler, ok := dispatcher.Dispatch(discriminator); ok {
 								message := handler.Create()
 
-								if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
+								if err := unmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
 									deadLetterOptions := &azservicebus.DeadLetterOptions{
 										ErrorDescription: to.Ptr(err.Error()),
 										Reason:           to.Ptr("UnmarshalMessageError"),
@@ -322,6 +323,24 @@ func nextMain() {
 	}
 
 	sessionsGroup.Wait()
+}
+
+func unmarshalDiscriminator(data []byte, discriminator *processor.Discriminator) error {
+	partialMessage := &struct {
+		Type string `json:"Type"`
+	}{}
+
+	if err := json.Unmarshal(data, &partialMessage); err != nil {
+		return err
+	}
+
+	discriminator = (*processor.Discriminator)(&partialMessage.Type)
+
+	return nil
+}
+
+func unmarshalMessage(data []byte, message processor.Message) error {
+	return json.Unmarshal(data, message)
 }
 
 type Session struct {
@@ -378,9 +397,9 @@ func newSessionConsumer(dispatcher *processor.Dispatcher) (consumerFunc processo
 				}
 
 				for _, serviceBusReceivedMessage := range serviceBusReceivedMessages {
-					discriminator, err := processor.UnmarshalDiscriminator(serviceBusReceivedMessage.Body)
+					discriminator := processor.DiscriminatorEmpty
 
-					if err != nil {
+					if err := unmarshalDiscriminator(serviceBusReceivedMessage.Body, &discriminator); err != nil {
 						deadLetterOptions := &azservicebus.DeadLetterOptions{
 							ErrorDescription: to.Ptr(err.Error()),
 							Reason:           to.Ptr("UnmarshalDiscriminatorError"),
@@ -400,7 +419,7 @@ func newSessionConsumer(dispatcher *processor.Dispatcher) (consumerFunc processo
 					if handler, ok := dispatcher.Dispatch(discriminator); ok {
 						message := handler.Create()
 
-						if err := processor.UnmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
+						if err := unmarshalMessage(serviceBusReceivedMessage.Body, message); err != nil {
 							deadLetterOptions := &azservicebus.DeadLetterOptions{
 								ErrorDescription: to.Ptr(err.Error()),
 								Reason:           to.Ptr("UnmarshalMessageError"),

@@ -28,6 +28,13 @@ type Handler interface {
 	Handle(message Message) error
 }
 
+type Session any
+
+type SessionHandler interface {
+	Discriminator() Discriminator
+	SessionHandle(session Session, message Message) error
+}
+
 type Dispatcher struct {
 	handlers map[Discriminator]Handler
 }

@@ -1,6 +1,6 @@
 module github.com/zdrgeo/azure-bricks/azure-eventhubs-consumer
 
-go 1.23.0
+go 1.23
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.8.0

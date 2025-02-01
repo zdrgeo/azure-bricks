@@ -1,6 +1,6 @@
 module github.com/zdrgeo/azure-bricks/azure-dataexplorer-ingester
 
-go 1.23.0
+go 1.23
 
 require (
 	github.com/Azure/azure-kusto-go/azkustodata v1.0.0-preview-5
